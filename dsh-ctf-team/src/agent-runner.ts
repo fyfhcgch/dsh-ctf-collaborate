@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Broadcaster } from './sse-broadcast.js'
 import type { TeamDb, TeamOperationKind } from './types.js'
-import type { SessionForkAdapter } from './host-adapter.js'
+import type { SessionForkAdapter, SessionForkExecution } from './host-adapter.js'
 
 export type AgentMutationSink = (kind: TeamOperationKind, payload: unknown) => void
 
@@ -16,26 +16,29 @@ export function setupAgentRunner(db: TeamDb, broadcast: Broadcaster, adapter: Se
       const taskId = randomUUID()
       const task = { taskId, challengeId, ownerUserId, prompt, done: false, result: '', createdAt: Date.now() }
       db.insertTask(task); mutationSink?.('task_upsert', task); broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } })
+      let dispose: (() => void) | undefined
+      let child: SessionForkExecution | undefined
       try {
-        const child = await adapter.fork(prompt)
-        const dispose = child.onMessage?.((content) => {
+        child = await adapter.fork(prompt)
+        dispose = child.onMessage?.((content) => {
           const thought = { id: randomUUID(), challengeId, source: `agent-${taskId}`, content, createdAt: Date.now() }
           db.insertThought(thought); mutationSink?.('thought_add', thought)
           broadcast.emit({ type: 'thought_add', payload: { challengeId, taskId } })
         })
-        const completed = { ...task, done: true, result: child.content }
+        const completed = { ...task, done: true, result: await child.content }
         db.insertTask(completed); mutationSink?.('task_upsert', completed)
         broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } })
-        dispose?.()
-        return { taskId, response: child.content }
+        return { taskId, response: completed.result }
       } catch (error) {
         const failed = { ...task, done: true, result: `Failed: ${error instanceof Error ? error.message : String(error)}` }
         db.insertTask(failed); mutationSink?.('task_upsert', failed)
         broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } })
         throw error
-      } finally { running -= 1 }
+      } finally { dispose?.(); await childDispose(child); running -= 1 }
     },
   }
 }
+
+async function childDispose(child: SessionForkExecution | undefined): Promise<void> { await child?.dispose?.() }
 
 export type AgentRunner = ReturnType<typeof setupAgentRunner>

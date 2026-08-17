@@ -8,4 +8,4 @@
         dbPath: !!js dshHomePath('ctf-team/ctf-team.db')
         agentConcurrentLimit: 4
         webMountPath: /ctf-team
-        enableHttpBridge: false
+        enableHttpBridge: true

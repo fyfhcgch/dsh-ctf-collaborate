@@ -1,9 +1,11 @@
 id: file:dsh-ctf-team
 name: dsh-ctf-team
-description: Persistent CTF team board with SQLite storage, SSE updates, and fallback commands.
-version: 0.3.0
+description: Persistent CTF collaboration workspace with SQLite, SSE, shared notes, evidence, and Agent tasks.
+version: 0.4.0
 main: dist/index.js
 config:
   dbPath: ./data/ctf-team.db
   agentConcurrentLimit: 4
   webMountPath: /ctf-team
+  enableHttpBridge: true
+  teamId: ctf-team

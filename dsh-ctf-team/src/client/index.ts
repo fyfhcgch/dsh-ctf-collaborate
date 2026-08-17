@@ -5,7 +5,7 @@
  * child fiber that explicitly injects the generated `remote.ctfTeam` service.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { createElement, useEffect } from 'react'
+import { createElement } from 'react'
 import type { RemoteResult, TypertDisposer } from '@deepseek-ai/dsh-typert-protocol'
 import TYPERT_REMOTE from '../remote.js'
 import { TeamP2PController } from './p2p.js'
@@ -90,20 +90,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       const slots = teamCtx as unknown as { slots: { inject: (key: 'sidebar.footer.action', callback: () => () => void) => () => void; register: (options: { name: 'sidebar.footer.action'; id: string; order?: number }, component: (props: { wide: boolean }) => unknown) => () => void } }
       const disposeSidebarAction = slots.slots.inject('sidebar.footer.action', () => {
         const SidebarBoardAction = ({ wide }: { wide: boolean }) => {
-          useEffect(() => {
-            board.setSidebarIntegrated(true)
-            return () => { board.setSidebarIntegrated(false) }
-          }, [])
-          useEffect(() => {
-            board.setSidebarWide(wide)
-          }, [wide])
+          board.setSidebarWide(wide)
           return createElement(
             'button',
             {
               type: 'button',
               className: 'dsh-ctf-team-sidebar-action',
-              title: 'CTF Board',
-              'aria-label': 'CTF Board',
+              title: 'Open CTF Team workspace',
+              'aria-label': 'Open CTF Team workspace',
+              'data-dsh-ctf-team-workspace-button': 'true',
               onClick: () => { board.toggleOpen() },
             },
             wide ? 'CTF Board' : '🏁',

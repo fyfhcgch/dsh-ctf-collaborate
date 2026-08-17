@@ -9,7 +9,7 @@ export class TeamBoard {
     root;
     refreshTimer;
     unsubscribeP2P;
-    sidebarIntegrated = false;
+    eventSource;
     sidebarWide = false;
     drafts = new Map();
     state = {
@@ -43,14 +43,13 @@ export class TeamBoard {
             this.state.p2p = status;
             this.render();
         });
-        this.refreshTimer = window.setInterval(() => { void this.refresh({ quiet: true }); }, 5000);
+        this.connectSse();
+        this.refreshTimer = window.setInterval(() => { void this.refresh({ quiet: true }); }, 15000);
         void this.refresh();
     }
-    setSidebarIntegrated(value) {
-        this.sidebarIntegrated = value;
-        this.render();
-    }
     setSidebarWide(value) {
+        if (this.sidebarWide === value)
+            return;
         this.sidebarWide = value;
         this.render();
     }
@@ -68,6 +67,8 @@ export class TeamBoard {
     dispose() {
         if (this.refreshTimer !== undefined)
             window.clearInterval(this.refreshTimer);
+        this.eventSource?.close();
+        this.eventSource = undefined;
         this.unsubscribeP2P?.();
         window.removeEventListener('dsh-ctf-team:sync', this.onExternalSync);
         this.root?.remove();
@@ -105,6 +106,22 @@ export class TeamBoard {
         }
     }
     onExternalSync = () => { void this.refresh({ quiet: true }); };
+    connectSse() {
+        if (typeof EventSource === 'undefined')
+            return;
+        try {
+            const source = new EventSource('/ctf-team/api/events');
+            source.onmessage = () => { void this.refresh({ quiet: true }); };
+            source.onerror = () => {
+                // EventSource performs its own reconnect. The periodic refresh below
+                // remains a degraded transport while the connection is recovering.
+            };
+            this.eventSource = source;
+        }
+        catch (cause) {
+            this.log(`SSE unavailable: ${errorMessage(cause)}`);
+        }
+    }
     async loadDetail() {
         if (!this.state.selectedId) {
             this.state.detail = undefined;
@@ -263,7 +280,7 @@ export class TeamBoard {
         }
         if (action === 'note') {
             await this.run('笔记已添加', async () => {
-                await this.remote.addNote({ challengeId, authorUserId: text(data, 'authorUserId') || undefined, content: text(data, 'content') });
+                await this.remote.addNote({ challengeId, authorUserId: text(data, 'authorUserId') || this.state.identity?.peerId, content: text(data, 'content') });
                 this.clearDraft('note');
                 form.reset();
             });
@@ -287,7 +304,7 @@ export class TeamBoard {
         }
         if (action === 'task') {
             await this.run('任务已提交', async () => {
-                await this.remote.spawnAgent({ challengeId, ownerUserId: text(data, 'ownerUserId') || undefined, prompt: text(data, 'prompt') });
+                await this.remote.spawnAgent({ challengeId, ownerUserId: text(data, 'ownerUserId') || this.state.identity?.peerId, prompt: text(data, 'prompt') });
                 this.clearDraft('task');
                 form.reset();
             });
@@ -314,10 +331,10 @@ export class TeamBoard {
         shell.innerHTML = this.state.open ? this.renderPanel() : this.renderLauncher();
     }
     renderLauncher() {
-        if (this.sidebarIntegrated)
-            return '';
-        const count = this.state.challenges.length;
-        return `<button class="ctf-launcher" type="button" data-action="toggle">🏁 CTF Board <span>${count}</span></button>`;
+        // The board is opened from the Harness workspace/sidebar action. Keeping
+        // this shell empty prevents a second floating launcher from covering the
+        // active workspace.
+        return '';
     }
     renderPanel() {
         return `
@@ -414,7 +431,7 @@ export class TeamBoard {
     }
     renderNotes(detail) {
         return `${timeline(detail.notes, (item) => `<b>${escapeHtml(item.authorUserId)}</b><small>${time(item.createdAt)}</small><p>${escapeHtml(item.content)}</p>`)}
-      <form class="ctf-form inline" data-action="note"><input name="authorUserId" placeholder="作者" value="${this.draft('note', 'authorUserId')}"><textarea name="content" required rows="3" placeholder="笔记内容">${this.draft('note', 'content')}</textarea><button>添加笔记</button></form>`;
+      <form class="ctf-form inline" data-action="note"><input name="authorUserId" placeholder="作者（默认当前 Peer）" value="${this.draft('note', 'authorUserId')}"><textarea name="content" required rows="3" placeholder="笔记内容">${this.draft('note', 'content')}</textarea><button>添加笔记</button></form>`;
     }
     renderEvidence(detail) {
         return `${timeline(detail.evidence, (item) => `<b>${escapeHtml(item.type)}</b><small>${time(item.createdAt)}</small><pre>${escapeHtml(item.content)}</pre>`)}
@@ -426,7 +443,7 @@ export class TeamBoard {
     }
     renderTasks(detail) {
         const tasks = detail.tasks.length ? detail.tasks.map((task) => `<article class="ctf-item"><b>${escapeHtml(task.ownerUserId)}</b><small>${time(task.createdAt)} · ${task.done ? 'done' : 'running'}</small><p>${escapeHtml(task.prompt)}</p>${task.result ? `<pre>${escapeHtml(task.result)}</pre>` : ''}</article>`).join('') : '<div class="ctf-empty small">暂无任务</div>';
-        return `${tasks}<form class="ctf-form inline" data-action="task"><input name="ownerUserId" placeholder="Owner" value="${this.draft('task', 'ownerUserId')}"><textarea name="prompt" required rows="4" placeholder="给 agent 的任务提示">${this.draft('task', 'prompt')}</textarea><button>启动任务</button></form>`;
+        return `${tasks}<form class="ctf-form inline" data-action="task"><input name="ownerUserId" placeholder="Owner（默认当前 Peer）" value="${this.draft('task', 'ownerUserId')}"><textarea name="prompt" required rows="4" placeholder="给 agent 的任务提示">${this.draft('task', 'prompt')}</textarea><button>启动任务</button></form>`;
     }
     draft(action, name, fallback = '') {
         return escapeAttr(this.drafts.get(this.draftKey(action, name)) ?? fallback);
@@ -480,5 +497,5 @@ function escapeHtml(value) {
 }
 function escapeAttr(value) { return escapeHtml(value); }
 const styles = `
-#dsh-ctf-team-board{position:fixed;left:var(--dsh-ctf-board-left,72px);top:14px;right:14px;bottom:14px;z-index:2147483000;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;pointer-events:none}#dsh-ctf-team-board[data-sidebar-wide="1"]{--dsh-ctf-board-left:316px}#dsh-ctf-team-board[data-sidebar-wide="0"]{--dsh-ctf-board-left:72px}#dsh-ctf-team-board:empty{display:none}.ctf-launcher{pointer-events:auto;border:1px solid #111;background:#fff;color:#111;border-radius:12px;padding:9px 12px;box-shadow:0 8px 24px #0002;cursor:pointer}.ctf-launcher span{margin-left:8px;border:1px solid #111;border-radius:999px;padding:1px 6px}.ctf-panel{pointer-events:auto;width:min(980px,100%);height:100%;background:#fff;border:1px solid #111;border-radius:14px;box-shadow:0 18px 60px #0003;overflow:hidden;display:flex;flex-direction:column}.ctf-header{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;background:#fff;border-bottom:1px solid #111}.ctf-header strong{font-size:16px}.ctf-header small{display:block;color:#555}.ctf-header-actions{display:flex;gap:8px;align-items:center}.ctf-panel button,.ctf-panel input,.ctf-panel select,.ctf-panel textarea{font:inherit}.ctf-panel button{border:1px solid #111;background:#111;color:#fff;border-radius:9px;padding:7px 10px;cursor:pointer}.ctf-panel button:hover{background:#333}.ctf-panel button.danger{background:#fff;color:#111;border-color:#111}.ctf-panel button.danger:hover{background:#f2f2f2}.ctf-panel input,.ctf-panel select,.ctf-panel textarea{width:100%;box-sizing:border-box;border:1px solid #bbb;background:#fff;color:#111;border-radius:9px;padding:8px;outline:none}.ctf-panel input:focus,.ctf-panel select:focus,.ctf-panel textarea:focus{border-color:#111;box-shadow:0 0 0 2px #0001}.ctf-panel textarea{resize:vertical}.ctf-stats{display:flex;gap:8px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid #e5e5e5}.ctf-stats span,.ctf-card-meta span{background:#fff;border:1px solid #ddd;border-radius:999px;padding:3px 8px;color:#222}.ctf-stats .ok{border-color:#111;color:#111}.ctf-stats .warn{border-color:#777;color:#555}.ctf-main{display:grid;grid-template-columns:300px 1fr;min-height:0;flex:1}.ctf-list{border-right:1px solid #e5e5e5;min-height:0;display:flex;flex-direction:column;background:#fafafa}.ctf-list-scroll,.ctf-detail{overflow:auto;padding:12px}.ctf-create{padding:12px;border-bottom:1px solid #e5e5e5}.ctf-create>button{width:100%;background:#fff;color:#111}.ctf-create.open>button{margin-bottom:10px}.ctf-create form,.ctf-form{display:grid;gap:9px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ctf-card{border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px;margin-bottom:9px;cursor:pointer}.ctf-card:hover{border-color:#999}.ctf-card.selected{border-color:#111;box-shadow:0 0 0 1px #111 inset}.ctf-card-title{font-weight:700;margin-bottom:6px;color:#111}.ctf-card-meta{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}.ctf-detail-head{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:10px}.ctf-detail-head h2{margin:0 0 4px;color:#111}.ctf-detail-head code{color:#555}.ctf-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.ctf-tabs button{background:#fff;color:#111;border-color:#bbb}.ctf-tabs button.active{background:#111;color:#fff;border-color:#111}.ctf-form label{display:grid;gap:5px;color:#333}.ctf-form.inline{border-top:1px solid #e5e5e5;margin-top:12px;padding-top:12px}.ctf-item{border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px;margin-bottom:9px}.ctf-item b{color:#111}.ctf-item small{display:block;color:#666;margin:2px 0 6px}.ctf-item p{white-space:pre-wrap;margin:0;color:#111}.ctf-item pre{white-space:pre-wrap;overflow:auto;background:#f7f7f7;border:1px solid #ddd;border-radius:9px;padding:8px;color:#111}.ctf-empty{display:grid;place-items:center;min-height:160px;color:#777;border:1px dashed #bbb;border-radius:12px}.ctf-empty.small{min-height:auto;padding:16px}.ctf-alert{margin:10px 14px 0;padding:8px 10px;border-radius:10px;border:1px solid}.ctf-alert.error{background:#fff;border-color:#111;color:#111}.ctf-alert.ok{background:#f7f7f7;border-color:#999;color:#111}.ctf-spinner{color:#555}.ctf-p2p-status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.ctf-p2p-status span{background:#fff;border:1px solid #ddd;border-radius:999px;padding:3px 8px}.p2p-forms textarea[readonly]{margin-top:8px}.dsh-ctf-team-sidebar-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #111;background:#fff;color:#111;border-radius:10px;padding:6px 10px;cursor:pointer;font:inherit;min-width:44px}.dsh-ctf-team-sidebar-action:hover{background:#f4f4f4}@media (max-width:860px){#dsh-ctf-team-board{left:10px;right:10px;top:10px;bottom:10px}.ctf-main{grid-template-columns:1fr}.ctf-list{max-height:42%;border-right:0;border-bottom:1px solid #e5e5e5}.ctf-panel{height:100%;width:100%}.grid2{grid-template-columns:1fr}}
+#dsh-ctf-team-board{position:fixed;left:var(--dsh-ctf-board-left,72px);top:14px;right:14px;bottom:14px;z-index:2147483000;font:13px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;pointer-events:none}#dsh-ctf-team-board[data-sidebar-wide="1"]{--dsh-ctf-board-left:316px}#dsh-ctf-team-board[data-sidebar-wide="0"]{--dsh-ctf-board-left:72px}#dsh-ctf-team-board:empty{display:none}.ctf-panel{pointer-events:auto;width:min(980px,100%);height:100%;background:#fff;border:1px solid #111;border-radius:14px;box-shadow:0 18px 60px #0003;overflow:hidden;display:flex;flex-direction:column}.ctf-header{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 14px;background:#fff;border-bottom:1px solid #111}.ctf-header strong{font-size:16px}.ctf-header small{display:block;color:#555}.ctf-header-actions{display:flex;gap:8px;align-items:center}.ctf-panel button,.ctf-panel input,.ctf-panel select,.ctf-panel textarea{font:inherit}.ctf-panel button{border:1px solid #111;background:#111;color:#fff;border-radius:9px;padding:7px 10px;cursor:pointer}.ctf-panel button:hover{background:#333}.ctf-panel button.danger{background:#fff;color:#111;border-color:#111}.ctf-panel button.danger:hover{background:#f2f2f2}.ctf-panel input,.ctf-panel select,.ctf-panel textarea{width:100%;box-sizing:border-box;border:1px solid #bbb;background:#fff;color:#111;border-radius:9px;padding:8px;outline:none}.ctf-panel input:focus,.ctf-panel select:focus,.ctf-panel textarea:focus{border-color:#111;box-shadow:0 0 0 2px #0001}.ctf-panel textarea{resize:vertical}.ctf-stats{display:flex;gap:8px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid #e5e5e5}.ctf-stats span,.ctf-card-meta span{background:#fff;border:1px solid #ddd;border-radius:999px;padding:3px 8px;color:#222}.ctf-stats .ok{border-color:#111;color:#111}.ctf-stats .warn{border-color:#777;color:#555}.ctf-main{display:grid;grid-template-columns:300px 1fr;min-height:0;flex:1}.ctf-list{border-right:1px solid #e5e5e5;min-height:0;display:flex;flex-direction:column;background:#fafafa}.ctf-list-scroll,.ctf-detail{overflow:auto;padding:12px}.ctf-create{padding:12px;border-bottom:1px solid #e5e5e5}.ctf-create>button{width:100%;background:#fff;color:#111}.ctf-create.open>button{margin-bottom:10px}.ctf-create form,.ctf-form{display:grid;gap:9px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ctf-card{border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px;margin-bottom:9px;cursor:pointer}.ctf-card:hover{border-color:#999}.ctf-card.selected{border-color:#111;box-shadow:0 0 0 1px #111 inset}.ctf-card-title{font-weight:700;margin-bottom:6px;color:#111}.ctf-card-meta{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}.ctf-detail-head{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:10px}.ctf-detail-head h2{margin:0 0 4px;color:#111}.ctf-detail-head code{color:#555}.ctf-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.ctf-tabs button{background:#fff;color:#111;border-color:#bbb}.ctf-tabs button.active{background:#111;color:#fff;border-color:#111}.ctf-form label{display:grid;gap:5px;color:#333}.ctf-form.inline{border-top:1px solid #e5e5e5;margin-top:12px;padding-top:12px}.ctf-item{border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px;margin-bottom:9px}.ctf-item b{color:#111}.ctf-item small{display:block;color:#666;margin:2px 0 6px}.ctf-item p{white-space:pre-wrap;margin:0;color:#111}.ctf-item pre{white-space:pre-wrap;overflow:auto;background:#f7f7f7;border:1px solid #ddd;border-radius:9px;padding:8px;color:#111}.ctf-empty{display:grid;place-items:center;min-height:160px;color:#777;border:1px dashed #bbb;border-radius:12px}.ctf-empty.small{min-height:auto;padding:16px}.ctf-alert{margin:10px 14px 0;padding:8px 10px;border-radius:10px;border:1px solid}.ctf-alert.error{background:#fff;border-color:#111;color:#111}.ctf-alert.ok{background:#f7f7f7;border-color:#999;color:#111}.ctf-spinner{color:#555}.ctf-p2p-status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.ctf-p2p-status span{background:#fff;border:1px solid #ddd;border-radius:999px;padding:3px 8px}.p2p-forms textarea[readonly]{margin-top:8px}.dsh-ctf-team-sidebar-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #111;background:#fff;color:#111;border-radius:10px;padding:6px 10px;cursor:pointer;font:inherit;min-width:44px}.dsh-ctf-team-sidebar-action:hover{background:#f4f4f4}@media (max-width:860px){#dsh-ctf-team-board{left:10px;right:10px;top:10px;bottom:10px}.ctf-main{grid-template-columns:1fr}.ctf-list{max-height:42%;border-right:0;border-bottom:1px solid #e5e5e5}.ctf-panel{height:100%;width:100%}.grid2{grid-template-columns:1fr}}
 `;

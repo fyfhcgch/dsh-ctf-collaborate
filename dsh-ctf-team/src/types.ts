@@ -12,10 +12,11 @@ export interface Challenge {
   createdAt: number
 }
 export interface TeamNote { id: string; challengeId: string; authorUserId: string; content: string; createdAt: number }
+export interface SharedNote { challengeId: string; content: string; updatedBy: string; updatedAt: number }
 export interface AgentThought { id: string; challengeId: string; source: string; content: string; createdAt: number }
 export interface EvidenceItem { id: string; challengeId: string; type: 'tool_output' | 'file_extract' | 'log'; content: string; createdAt: number }
 export interface SubTask { taskId: string; challengeId: string; ownerUserId: string; prompt: string; done: boolean; result: string; createdAt: number }
-export type BroadcastEventType = 'challenge_update' | 'note_add' | 'thought_add' | 'evidence_add' | 'task_update'
+export type BroadcastEventType = 'challenge_update' | 'note_add' | 'shared_note_update' | 'thought_add' | 'evidence_add' | 'task_update'
 export interface BroadcastEvent<T> { type: BroadcastEventType; payload: T }
 
 export class TeamInputError extends Error {
@@ -40,6 +41,8 @@ export interface TeamDb {
   deleteChallenge(id: string): boolean
   listChallenges(): Challenge[]
   getChallenge(id: string): Challenge | null
+  getSharedNote(challengeId: string): SharedNote | null
+  upsertSharedNote(note: SharedNote): void
   insertNote(item: TeamNote): void
   listNotes(challengeId: string): TeamNote[]
   insertThought(item: AgentThought): void
@@ -59,6 +62,7 @@ export type TeamOperationKind =
   | 'challenge_upsert'
   | 'challenge_delete'
   | 'note_add'
+  | 'shared_note_upsert'
   | 'thought_add'
   | 'evidence_add'
   | 'task_upsert'

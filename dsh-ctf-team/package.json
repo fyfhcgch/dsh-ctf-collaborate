@@ -1,6 +1,6 @@
 {
   "name": "dsh-ctf-team",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Persistent CTF collaboration board plugin for DeepSeek Harness",
   "type": "module",
   "main": "dist/index.js",
@@ -41,10 +41,11 @@
   },
   "scripts": {
     "build:backend": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
-    "build": "npm run build:backend && npm run build:client",
+    "build": "npm run build:web && npm run build:backend && npm run build:client",
     "dev:backend": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --watch",
-    "test": "npm run build:backend && node --test tests/*.test.js",
-    "build:client": "tsdown --config tsdown.client.config.mjs"
+    "test": "npm run build:web && npm run build:backend && node --test tests/*.test.js",
+    "build:client": "tsdown --config tsdown.client.config.mjs",
+    "build:web": "node scripts.build-web-ui.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -53,17 +54,27 @@
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.5"
   },
   "engines": {
     "node": ">=22.5.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.0",
+    "esbuild": "^0.25.12",
     "tsdown": "^0.22.14",
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "element-plus": "^2.14.4",
+    "vue": "^3.5.41",
     "zod": "^4.4.3"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.25.12": true
   }
 }

@@ -29,6 +29,7 @@ export class TeamService {
             throw new TeamNotFoundError('Challenge not found');
         return {
             challenge,
+            sharedNote: this.db.getSharedNote(id),
             notes: this.db.listNotes(id),
             thoughts: this.db.listThoughts(id),
             evidence: this.db.listEvidence(id),
@@ -81,6 +82,21 @@ export class TeamService {
             throw new TeamNotFoundError('Challenge not found');
         this.record('challenge_delete', { challengeId: id });
         this.broadcast.emit({ type: 'challenge_update', payload: { challengeId: id, deleted: true } });
+    }
+    updateSharedNote(input) {
+        const challengeId = this.requireChallenge(input.challengeId);
+        const note = {
+            challengeId,
+            content: typeof input.content === 'string' ? input.content.trimEnd() : (() => { throw new TeamInputError('content must be a string'); })(),
+            updatedBy: boundedActor(input.updatedBy, 'updatedBy'),
+            updatedAt: Date.now(),
+        };
+        if (note.content.length > MAX_CONTENT)
+            throw new TeamInputError(`content exceeds ${MAX_CONTENT} characters`);
+        this.db.upsertSharedNote(note);
+        this.record('shared_note_upsert', note);
+        this.broadcast.emit({ type: 'shared_note_update', payload: { challengeId } });
+        return note;
     }
     addNote(input) {
         const challengeId = this.requireChallenge(input.challengeId);
@@ -148,6 +164,18 @@ export class TeamService {
                 this.db.deleteChallenge(challengeId);
                 this.db.setVersion('challenge', challengeId, operation);
                 this.broadcast.emit({ type: 'challenge_update', payload: { challengeId, deleted: true } });
+                return 'applied';
+            }
+            case 'shared_note_upsert': {
+                const note = parseRemoteSharedNote(payload);
+                if (!this.db.getChallenge(note.challengeId))
+                    return 'pending';
+                const currentVersion = this.db.getVersion('shared_note', note.challengeId);
+                if (currentVersion && compareVersion(operation, currentVersion) <= 0)
+                    return 'ignored';
+                this.db.upsertSharedNote(note);
+                this.db.setVersion('shared_note', note.challengeId, operation);
+                this.broadcast.emit({ type: 'shared_note_update', payload: { challengeId: note.challengeId } });
                 return 'applied';
             }
             case 'note_add': {
@@ -292,6 +320,10 @@ function parseRemoteChallenge(value) {
         ...(value.flag === undefined || value.flag === null ? {} : { flag: remoteText(value.flag, 'flag') }),
         createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now(),
     };
+}
+function parseRemoteSharedNote(value) {
+    const updatedAt = typeof value.updatedAt === 'number' ? value.updatedAt : Date.now();
+    return { challengeId: requireId(value.challengeId, 'challengeId'), content: typeof value.content === 'string' ? value.content : '', updatedBy: remoteText(value.updatedBy, 'updatedBy', 128), updatedAt };
 }
 function parseRemoteNote(value) {
     return { id: requireId(value.id, 'id'), challengeId: requireId(value.challengeId, 'challengeId'), authorUserId: remoteText(value.authorUserId, 'authorUserId', 128), content: remoteText(value.content, 'content'), createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now() };

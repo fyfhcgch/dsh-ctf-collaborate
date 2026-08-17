@@ -1,5 +1,6 @@
 import { TeamInputError, TeamNotFoundError } from './types.js';
 import { getHttpServer } from './host-adapter.js';
+import { renderWebUi, webAsset } from './web-ui.js';
 const bodyOf = (value) => value !== null && typeof value === 'object' ? value : {};
 function sendError(res, error) {
     if (error instanceof TeamNotFoundError)
@@ -10,7 +11,7 @@ function sendError(res, error) {
     }
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
 }
-/** Mount the optional legacy HTTP bridge over the shared TeamService. */
+/** Mount the built-in Web UI, JSON API, and SSE stream over the shared TeamService. */
 export function setupApi(ctx, mountPath, broadcast, service) {
     const server = getHttpServer(ctx);
     if (!server) {
@@ -18,13 +19,35 @@ export function setupApi(ctx, mountPath, broadcast, service) {
         return false;
     }
     const api = `${mountPath.replace(/\/$/, '')}/api`;
+    const webPath = mountPath.replace(/\/$/, '') || '/ctf-team';
+    const sendPage = (_req, res) => {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.write(renderWebUi(webPath));
+        res.end();
+    };
+    server.get(webPath, sendPage);
+    server.get(`${webPath}/`, sendPage);
+    const sendAsset = (name) => (_req, res) => {
+        const asset = webAsset(name);
+        res.setHeader('Content-Type', asset.contentType);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.write(asset.content);
+        res.end();
+    };
+    server.get(`${webPath}/assets/app.js`, sendAsset('app.js'));
+    server.get(`${webPath}/assets/app.css`, sendAsset('app.css'));
     server.get(`${api}/events`, (req, res) => {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
-        res.write('retry: 3000\n\n');
-        const detach = broadcast.connectClient({ write: (data) => res.write(data), close: () => res.end() });
-        req.on?.('close', () => { detach(); });
+        res.write('retry: 3000\n: connected\n\n');
+        let heartbeat;
+        const close = () => { if (heartbeat)
+            clearInterval(heartbeat); res.end(); };
+        const detach = broadcast.connectClient({ write: (data) => res.write(data), close });
+        heartbeat = setInterval(() => { res.write(': heartbeat\n\n'); }, 15000);
+        heartbeat.unref?.();
+        req.on?.('close', () => { close(); detach(); });
     });
     server.get(`${api}/challenges`, (_req, res) => res.json(service.listChallenges()));
     server.get(`${api}/challenges/:cid`, (req, res) => {
@@ -55,6 +78,14 @@ export function setupApi(ctx, mountPath, broadcast, service) {
         try {
             service.deleteChallenge(req.params.cid);
             res.json({ ok: true });
+        }
+        catch (error) {
+            sendError(res, error);
+        }
+    });
+    server.post(`${api}/shared-note`, (req, res) => {
+        try {
+            res.json({ ok: true, sharedNote: service.updateSharedNote(bodyOf(req.body)) });
         }
         catch (error) {
             sendError(res, error);
@@ -93,5 +124,8 @@ export function setupApi(ctx, mountPath, broadcast, service) {
             sendError(res, error);
         }
     });
+    if (server.dispose && typeof ctx.effect === 'function') {
+        ctx.effect(() => () => server.dispose?.(), 'dsh-ctf-team HTTP routes cleanup');
+    }
     return true;
 }

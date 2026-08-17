@@ -14,20 +14,21 @@ export function setupAgentRunner(db, broadcast, adapter, concurrentLimit, mutati
             db.insertTask(task);
             mutationSink?.('task_upsert', task);
             broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } });
+            let dispose;
+            let child;
             try {
-                const child = await adapter.fork(prompt);
-                const dispose = child.onMessage?.((content) => {
+                child = await adapter.fork(prompt);
+                dispose = child.onMessage?.((content) => {
                     const thought = { id: randomUUID(), challengeId, source: `agent-${taskId}`, content, createdAt: Date.now() };
                     db.insertThought(thought);
                     mutationSink?.('thought_add', thought);
                     broadcast.emit({ type: 'thought_add', payload: { challengeId, taskId } });
                 });
-                const completed = { ...task, done: true, result: child.content };
+                const completed = { ...task, done: true, result: await child.content };
                 db.insertTask(completed);
                 mutationSink?.('task_upsert', completed);
                 broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } });
-                dispose?.();
-                return { taskId, response: child.content };
+                return { taskId, response: completed.result };
             }
             catch (error) {
                 const failed = { ...task, done: true, result: `Failed: ${error instanceof Error ? error.message : String(error)}` };
@@ -37,8 +38,11 @@ export function setupAgentRunner(db, broadcast, adapter, concurrentLimit, mutati
                 throw error;
             }
             finally {
+                dispose?.();
+                await childDispose(child);
                 running -= 1;
             }
         },
     };
 }
+async function childDispose(child) { await child?.dispose?.(); }

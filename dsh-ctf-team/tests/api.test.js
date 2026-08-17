@@ -11,11 +11,14 @@ import { TeamService } from '../dist/team-service.js'
 class FakeResponse {
   statusCode = 200
   value = undefined
+  headers = {}
+  chunks = []
+  ended = false
   status(code) { this.statusCode = code; return this }
   json(value) { this.value = value }
-  setHeader() {}
-  write() {}
-  end() {}
+  setHeader(name, value) { this.headers[name] = value }
+  write(value) { this.chunks.push(value) }
+  end() { this.ended = true }
 }
 
 function fixture() {
@@ -44,9 +47,24 @@ async function invoke(handler, { body, params = {} } = {}) {
 test('HTTP bridge routes share service validation and status mapping', async () => {
   const f = fixture()
   try {
+    assert.ok(f.gets.has('/ctf-team'))
+    assert.ok(f.gets.has('/ctf-team/'))
     assert.ok(f.gets.has('/ctf-team/api/challenges'))
+
+    const page = await invoke(f.gets.get('/ctf-team'))
+    assert.match(page.headers['Content-Type'], /text\/html/)
+    assert.match(page.chunks.join(''), /CTF Team/)
+    assert.match(page.chunks.join(''), /EventSource/)
+    assert.match(page.chunks.join(''), /element-plus|Vue|CTF Team/i)
+    assert.equal(page.ended, true)
+    const asset = await invoke(f.gets.get('/ctf-team/assets/app.js'))
+    assert.match(asset.headers['Content-Type'], /javascript/)
+    assert.match(asset.chunks.join(''), /createApp/)
+    const css = await invoke(f.gets.get('/ctf-team/assets/app.css'))
+    assert.match(css.headers['Content-Type'], /css/)
     assert.ok(f.posts.has('/ctf-team/api/challenges/:cid/update'))
     assert.ok(f.posts.has('/ctf-team/api/challenges/:cid/delete'))
+    assert.ok(f.posts.has('/ctf-team/api/shared-note'))
 
     const invalid = await invoke(f.posts.get('/ctf-team/api/challenges'), { body: { title: '' } })
     assert.equal(invalid.statusCode, 400)

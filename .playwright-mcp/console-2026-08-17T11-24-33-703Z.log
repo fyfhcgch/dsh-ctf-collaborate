@@ -1,0 +1,23 @@
+[     464ms] [ERROR] TypeError: Cannot read properties of null (reading 'useEffect')
+    at exports.useEffect (http://127.0.0.1:3080/plugins/dsh-ctf-team/client.js?rev=6b6be83aeaa9:89:22)
+    at SidebarBoardAction (http://127.0.0.1:3080/plugins/dsh-ctf-team/client.js?rev=6b6be83aeaa9:5328:35)
+    at ys (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:54:17253)
+    at r0 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:44383)
+    at X2 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:40038)
+    at w5 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:39966)
+    at Oo (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:39819)
+    at Us (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:36140)
+    at J2 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:36952)
+    at gn (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:54:3273) @ http://127.0.0.1:3080/assets/index-Dqw48FrP.js:55
+[     465ms] [ERROR] slot entry crashed in 'sidebar.footer.action': TypeError: Cannot read properties of null (reading 'useEffect')
+    at exports.useEffect (http://127.0.0.1:3080/plugins/dsh-ctf-team/client.js?rev=6b6be83aeaa9:89:22)
+    at SidebarBoardAction (http://127.0.0.1:3080/plugins/dsh-ctf-team/client.js?rev=6b6be83aeaa9:5328:35)
+    at ys (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:54:17253)
+    at r0 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:44383)
+    at X2 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:40038)
+    at w5 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:39966)
+    at Oo (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:39819)
+    at Us (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:36140)
+    at J2 (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:56:36952)
+    at gn (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:54:3273) @ http://127.0.0.1:3080/assets/index-Dqw48FrP.js:71
+[     542ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:3080/:0

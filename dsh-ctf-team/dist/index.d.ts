@@ -1,5 +1,7 @@
 import Schema from '@deepseek-ai/schemastery';
 export declare const name = "dsh-ctf-team";
+/** Required host capability for the built-in /ctf-team HTTP surface. */
+export declare const inject: string[];
 /** Current Cordis 4 Standard Schema configuration contract. */
 export declare const Config: Schema<Schemastery.ObjectS<{
     dbPath: Schema<string, string>;

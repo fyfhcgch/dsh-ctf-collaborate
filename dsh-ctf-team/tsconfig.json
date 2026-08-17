@@ -10,5 +10,10 @@
     "skipLibCheck": true,
     "declaration": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/web/**/*.ts"
+  ]
 }

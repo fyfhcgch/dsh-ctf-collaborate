@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import Database from 'better-sqlite3';
 import { dirname, resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
 function parseAttachmentPaths(value) {
@@ -12,7 +12,7 @@ function parseAttachmentPaths(value) {
         return [];
     }
 }
-export const TEAM_SCHEMA_VERSION = 2;
+export const TEAM_SCHEMA_VERSION = 3;
 const parseChallenge = (row) => ({
     challengeId: String(row.challengeId),
     title: String(row.title),
@@ -27,7 +27,7 @@ const parseChallenge = (row) => ({
 export function createDb(dbPath) {
     const fullPath = resolve(dbPath);
     mkdirSync(dirname(fullPath), { recursive: true });
-    const db = new DatabaseSync(fullPath);
+    const db = new Database(fullPath);
     let closed = false;
     db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
     db.exec(`
@@ -43,6 +43,12 @@ export function createDb(dbPath) {
       status TEXT NOT NULL,
       flag TEXT,
       createdAt INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS shared_notes (
+      challengeId TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      updatedBy TEXT NOT NULL,
+      updatedAt INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS team_notes (
       id TEXT PRIMARY KEY,
@@ -99,8 +105,8 @@ export function createDb(dbPath) {
     if (!schemaRow) {
         db.prepare('INSERT INTO team_schema (version) VALUES (?)').run(TEAM_SCHEMA_VERSION);
     }
-    else if (Number(schemaRow.version) === 1) {
-        // Version 2 adds the idempotent operation log and deterministic entity versions.
+    else if (Number(schemaRow.version) === 1 || Number(schemaRow.version) === 2) {
+        // Version 2 added the operation log; version 3 adds one editable shared note per challenge.
         db.prepare('UPDATE team_schema SET version=?').run(TEAM_SCHEMA_VERSION);
     }
     else if (Number(schemaRow.version) !== TEAM_SCHEMA_VERSION) {
@@ -128,7 +134,7 @@ export function createDb(dbPath) {
             ensureOpen();
             db.exec('BEGIN');
             try {
-                for (const table of ['team_notes', 'agent_thoughts', 'evidence', 'subtasks']) {
+                for (const table of ['shared_notes', 'team_notes', 'agent_thoughts', 'evidence', 'subtasks']) {
                     db.prepare(`DELETE FROM ${table} WHERE challengeId=?`).run(id);
                 }
                 const result = db.prepare('DELETE FROM challenges WHERE challengeId=?').run(id);
@@ -145,6 +151,8 @@ export function createDb(dbPath) {
         },
         listChallenges: () => { ensureOpen(); return all('SELECT * FROM challenges ORDER BY createdAt DESC, challengeId DESC').map(parseChallenge); },
         getChallenge: (id) => { ensureOpen(); const row = db.prepare('SELECT * FROM challenges WHERE challengeId=?').get(id); return row ? parseChallenge(row) : null; },
+        getSharedNote: (challengeId) => { ensureOpen(); const row = db.prepare('SELECT * FROM shared_notes WHERE challengeId=?').get(challengeId); return row ? { challengeId: String(row.challengeId), content: String(row.content), updatedBy: String(row.updatedBy), updatedAt: Number(row.updatedAt) } : null; },
+        upsertSharedNote: (note) => { ensureOpen(); db.prepare('INSERT INTO shared_notes (challengeId,content,updatedBy,updatedAt) VALUES (:challengeId,:content,:updatedBy,:updatedAt) ON CONFLICT(challengeId) DO UPDATE SET content=excluded.content,updatedBy=excluded.updatedBy,updatedAt=excluded.updatedAt').run(named(note)); },
         insertNote: (n) => { ensureOpen(); db.prepare('INSERT INTO team_notes VALUES (:id,:challengeId,:authorUserId,:content,:createdAt)').run(named(n)); },
         listNotes: (id) => { ensureOpen(); return all('SELECT * FROM team_notes WHERE challengeId=? ORDER BY createdAt, id', id); },
         insertThought: (t) => { ensureOpen(); db.prepare('INSERT INTO agent_thoughts VALUES (:id,:challengeId,:source,:content,:createdAt)').run(named(t)); },

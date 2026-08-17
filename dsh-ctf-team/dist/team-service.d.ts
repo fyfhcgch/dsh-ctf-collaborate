@@ -1,5 +1,5 @@
 import type { Broadcaster } from './sse-broadcast.js';
-import type { AgentThought, Challenge, EvidenceItem, SubTask, TeamDb, TeamNote, TeamOperation } from './types.js';
+import type { AgentThought, Challenge, EvidenceItem, SubTask, TeamDb, TeamNote, SharedNote, TeamOperation } from './types.js';
 import type { AgentRunner } from './agent-runner.js';
 export interface CreateChallengeInput {
     challengeId?: unknown;
@@ -23,6 +23,12 @@ export interface AddNoteInput {
     authorUserId?: unknown;
     content?: unknown;
 }
+export interface UpdateSharedNoteInput {
+    challengeId?: unknown;
+    updatedBy?: unknown;
+    content?: unknown;
+    updatedAt?: unknown;
+}
 export interface AddEvidenceInput {
     challengeId?: unknown;
     type?: unknown;
@@ -36,6 +42,7 @@ export interface AddThoughtInput {
 export type OperationSink = (operation: TeamOperation) => void;
 export interface ChallengeDetail {
     challenge: Challenge;
+    sharedNote: SharedNote | null;
     notes: TeamNote[];
     thoughts: AgentThought[];
     evidence: EvidenceItem[];
@@ -54,6 +61,7 @@ export declare class TeamService {
     createChallenge(input: CreateChallengeInput): Challenge;
     updateChallenge(challengeId: unknown, input: UpdateChallengeInput): Challenge;
     deleteChallenge(challengeId: unknown): void;
+    updateSharedNote(input: UpdateSharedNoteInput): SharedNote;
     addNote(input: AddNoteInput): TeamNote;
     addEvidence(input: AddEvidenceInput): EvidenceItem;
     addThought(input: AddThoughtInput): AgentThought;

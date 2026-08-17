@@ -32,9 +32,12 @@ test('Remote contribution exposes the complete validated endpoint surface', () =
 })
 
 test('built Client face registers a module-loader handoff', () => {
+  const bundle = readFileSync(new URL('../dist/client.js', import.meta.url), 'utf8')
+  assert.match(bundle, /data-dsh-ctf-team-workspace-button/)
+  assert.doesNotMatch(bundle, /ctf-launcher/)
   const handoffs = []
   const window = { __ModuleLoader__: { load(handoff) { handoffs.push(handoff) } } }
-  vm.runInNewContext(readFileSync(new URL('../dist/client.js', import.meta.url), 'utf8'), { window })
+  vm.runInNewContext(bundle, { window })
   assert.equal(handoffs.length, 1)
   assert.equal(handoffs[0].id, 'dsh-ctf-team')
   const exports = handoffs[0].factory(() => { throw new Error('unexpected external require') })

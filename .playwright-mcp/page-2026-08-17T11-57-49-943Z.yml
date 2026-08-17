@@ -1,0 +1,28 @@
+- generic [ref=f5e3]:
+  - generic [ref=f5e4]:
+    - generic [ref=f5e5]:
+      - heading "🏁 CTF Team" [level=1] [ref=f5e6]
+      - paragraph [ref=f5e7]: 全队题目、共享笔记、Agent 黑板与证据库
+    - generic [ref=f5e8]:
+      - button "刷新" [ref=f5e9] [cursor=pointer]
+      - generic: SSE 实时同步
+  - generic [ref=f5e11]:
+    - generic [ref=f5e13]:
+      - generic [ref=f5e14]: "0"
+      - generic [ref=f5e15]: 题目总数
+    - generic [ref=f5e17]:
+      - generic [ref=f5e18]: "0"
+      - generic [ref=f5e19]: 待解
+    - generic [ref=f5e21]:
+      - generic [ref=f5e22]: "0"
+      - generic [ref=f5e23]: 正在解
+    - generic [ref=f5e25]:
+      - generic [ref=f5e26]: "0"
+      - generic [ref=f5e27]: 已解出
+  - main [ref=f5e28]:
+    - generic [ref=f5e30]:
+      - generic [ref=f5e31]:
+        - heading "题目清单" [level=2] [ref=f5e32]
+        - button "添加题目" [ref=f5e33] [cursor=pointer]
+      - paragraph [ref=f5e55]: 还没有题目
+    - paragraph [ref=f5e77]: 从左侧添加或选择一道题目

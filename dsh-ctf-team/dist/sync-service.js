@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { TeamInputError } from './types.js';
 const OPERATION_KINDS = new Set([
-    'challenge_upsert', 'challenge_delete', 'note_add', 'thought_add', 'evidence_add', 'task_upsert',
+    'challenge_upsert', 'challenge_delete', 'note_add', 'shared_note_upsert', 'thought_add', 'evidence_add', 'task_upsert',
 ]);
 /** Host-side operation log and materializer used by browser P2P peers. */
 export class TeamSyncService {
@@ -25,6 +25,11 @@ export class TeamSyncService {
                 if (typeof payload.challengeId === 'string')
                     db.setVersion('challenge', payload.challengeId, normalized);
             }
+            else if (normalized.kind === 'shared_note_upsert') {
+                const payload = normalized.payload;
+                if (typeof payload.challengeId === 'string')
+                    db.setVersion('shared_note', payload.challengeId, normalized);
+            }
             else if (normalized.kind === 'challenge_delete') {
                 const payload = normalized.payload;
                 if (typeof payload.challengeId === 'string')
@@ -39,6 +44,8 @@ export class TeamSyncService {
         for (const challenge of this.team.listChallenges()) {
             this.seedOperation(`bootstrap-challenge-${challenge.challengeId}`, 'challenge_upsert', challenge, challenge.createdAt);
             const detail = this.team.getDetail(challenge.challengeId);
+            if (detail.sharedNote)
+                this.seedOperation(`bootstrap-shared-note-${challenge.challengeId}`, 'shared_note_upsert', detail.sharedNote, detail.sharedNote.updatedAt);
             for (const note of detail.notes)
                 this.seedOperation(`bootstrap-note-${note.id}`, 'note_add', note, note.createdAt);
             for (const thought of detail.thoughts)
@@ -86,10 +93,10 @@ export class TeamSyncService {
                 continue;
             }
             this.db.appendOperation(operation);
-            if (operation.kind === 'challenge_upsert' || operation.kind === 'challenge_delete') {
+            if (operation.kind === 'challenge_upsert' || operation.kind === 'challenge_delete' || operation.kind === 'shared_note_upsert') {
                 const payload = operation.payload;
                 if (typeof payload.challengeId === 'string')
-                    this.db.setVersion('challenge', payload.challengeId, operation);
+                    this.db.setVersion(operation.kind === 'shared_note_upsert' ? 'shared_note' : 'challenge', payload.challengeId, operation);
             }
             ;
             (result === 'applied' ? accepted : ignored).push(operation.opId);

@@ -102,13 +102,12 @@ export declare class TeamBoard {
     private root?;
     private refreshTimer?;
     private unsubscribeP2P?;
-    private sidebarIntegrated;
+    private eventSource?;
     private sidebarWide;
     private readonly drafts;
     private readonly state;
     constructor(remote: TeamBoardRemote, p2p: TeamP2PController, log?: (message: string) => void);
     mount(): void;
-    setSidebarIntegrated(value: boolean): void;
     setSidebarWide(value: boolean): void;
     toggleOpen(): void;
     openPanel(): void;
@@ -117,6 +116,7 @@ export declare class TeamBoard {
         quiet?: boolean;
     }): Promise<void>;
     private readonly onExternalSync;
+    private connectSse;
     private loadDetail;
     private run;
     private onClick;

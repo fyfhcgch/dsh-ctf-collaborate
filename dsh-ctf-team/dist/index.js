@@ -9,12 +9,14 @@ import { getSessionForkAdapter } from './host-adapter.js';
 import { TeamRemoteService } from './remote-service.js';
 import { TeamSyncService } from './sync-service.js';
 export const name = 'dsh-ctf-team';
+/** Required host capability for the built-in /ctf-team HTTP surface. */
+export const inject = ['webServer', 'subagents', 'agents'];
 /** Current Cordis 4 Standard Schema configuration contract. */
 export const Config = Schema.object({
     dbPath: Schema.string().default('./data/ctf-team.db'),
     agentConcurrentLimit: Schema.number().step(1).min(1).default(4),
     webMountPath: Schema.string().default('/ctf-team'),
-    enableHttpBridge: Schema.boolean().default(false),
+    enableHttpBridge: Schema.boolean().default(true),
     teamId: Schema.string().default('ctf-team'),
     identityPath: Schema.string().default(''),
 });
