@@ -1,0 +1,12 @@
+[     226ms] Cannot use import statement outside a module
+[     225ms] [ERROR] Error: failed to import loader entry 37570863 (dsh-ctf-team): client-modules: bundle /plugins/dsh-ctf-team/client.js?rev=0168d7bcbe22 loaded without registering "dsh-ctf-team" via __ModuleLoader__.load
+    at Zt (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:259)
+    at qn._init (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:4088)
+    at async qn.init (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:3669)
+    at async qn.update (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:2509)
+    at async Rl.create (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:29:13227)
+    at async Proxy.create (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:29:16464)
+    at async http://127.0.0.1:3080/assets/index-Dqw48FrP.js:109:27831
+    at async Promise.all (index 37)
+    at async qm.runPluginBoot (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:109:27760)
+    at async qm.run (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:109:27129) @ http://127.0.0.1:3080/assets/index-Dqw48FrP.js:108

@@ -1,0 +1,69 @@
+[     252ms] [ERROR] Error: failed to apply loader entry 362dff00 (dsh-ctf-team): cannot get property "remote.ctfTeam" without inject
+    at Zt (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:259)
+    at qn._await (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:3924)
+    at async qn.init (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:3819)
+    at async qn.update (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:33:2509)
+    at async Rl.create (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:29:13227)
+    at async Proxy.create (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:29:16464)
+    at async http://127.0.0.1:3080/assets/index-Dqw48FrP.js:109:27831
+    at async Promise.all (index 37)
+    at async qm.runPluginBoot (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:109:27760)
+    at async qm.run (http://127.0.0.1:3080/assets/index-Dqw48FrP.js:109:27129) @ http://127.0.0.1:3080/assets/index-Dqw48FrP.js:108
+[  173059ms] [WARNING] [web-runtime] connection lost, retry #1 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  173060ms] [ERROR] Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING @ http://127.0.0.1:3080/plugins/events:0
+[  173476ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  173476ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  173476ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  173476ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10020
+[  173476ms] [WARNING] [web-runtime] connection lost, retry #2 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  174264ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10020
+[  174264ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  174264ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  174264ms] [WARNING] [web-runtime] connection lost, retry #3 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  175816ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  175816ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  175816ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  175816ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10020
+[  175816ms] [WARNING] [web-runtime] connection lost, retry #4 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  176061ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  179062ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  179382ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  179382ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  179382ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  179382ms] [WARNING] [web-runtime] connection lost, retry #5 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  182063ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  184124ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  184124ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  184124ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  184124ms] [WARNING] [web-runtime] connection lost, retry #6 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  185064ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  188066ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  191067ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  193550ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10020
+[  193550ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  193550ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  193550ms] [WARNING] [web-runtime] connection lost, retry #7 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  194068ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  197069ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  200070ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  203071ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  203286ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10020
+[  203286ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  203286ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  203286ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  203286ms] [WARNING] [web-runtime] connection lost, retry #8 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  206072ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  209073ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  212075ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  212992ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  212992ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  212992ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  212992ms] [WARNING] [web-runtime] connection lost, retry #9 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  215076ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  218077ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  218688ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[  218688ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  218688ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[  218688ms] [WARNING] [web-runtime] connection lost, retry #10 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[  221078ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[  224080ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0

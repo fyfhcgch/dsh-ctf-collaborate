@@ -1,0 +1,11 @@
+# Process-wide collaboration state belongs on the host plane: it is shared by
+# every GUI session and persists in one SQLite file. The client module mounts
+# the ctfTeam Typert Remote.
+- insert:
+    - id: dsh-ctf-team
+      name: dsh-ctf-team
+      config:
+        dbPath: !!js dshHomePath('ctf-team/ctf-team.db')
+        agentConcurrentLimit: 4
+        webMountPath: /ctf-team
+        enableHttpBridge: false

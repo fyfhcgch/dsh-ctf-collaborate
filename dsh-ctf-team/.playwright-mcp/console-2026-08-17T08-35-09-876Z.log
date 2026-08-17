@@ -1,0 +1,37 @@
+[     285ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:3080/:0
+[ 1326576ms] [WARNING] [web-runtime] connection lost, retry #1 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[ 1326576ms] [ERROR] Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING @ http://127.0.0.1:3080/plugins/events:0
+[ 1326840ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[ 1326840ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1326840ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1326840ms] [WARNING] [web-runtime] connection lost, retry #2 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[ 1327777ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10020
+[ 1327777ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[ 1327777ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1327777ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1327777ms] [WARNING] [web-runtime] connection lost, retry #3 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[ 1329243ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[ 1329243ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1329243ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1329243ms] [WARNING] [web-runtime] connection lost, retry #4 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[ 1329578ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[ 1330484ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/identity:0
+[ 1330484ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/syncStatus:0
+[ 1330484ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/list:0
+[ 1332561ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[ 1332561ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1332561ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1332561ms] [WARNING] [web-runtime] connection lost, retry #5 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[ 1332579ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[ 1335484ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/identity:0
+[ 1335485ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/syncStatus:0
+[ 1335486ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/list:0
+[ 1335580ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[ 1336665ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/host.describe:0
+[ 1336665ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.mux' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1336665ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:3080/api/events.host' failed: WebSocket is closed before the connection is established. @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:10055
+[ 1336665ms] [WARNING] [web-runtime] connection lost, retry #6 @ http://127.0.0.1:3080/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=bc3c3fa9d26b:115
+[ 1338581ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/plugins/events:0
+[ 1340484ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/identity:0
+[ 1340485ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/syncStatus:0
+[ 1340485ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3080/api/ctfTeam/list:0

@@ -1,0 +1,69 @@
+{
+  "name": "dsh-ctf-team",
+  "version": "0.3.0",
+  "description": "Persistent CTF collaboration board plugin for DeepSeek Harness",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./types": "./dist/types.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./remote": "./dist/remote.js",
+    "./package.json": "./package.json",
+    "./typert": {
+      "types": "./dist/typert.host.d.ts",
+      "default": "./dist/typert.host.js"
+    }
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "README.md",
+    "dist/typert.host.js",
+    "dist/typert.host.d.ts"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build:backend": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "build": "npm run build:backend && npm run build:client",
+    "dev:backend": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --watch",
+    "test": "npm run build:backend && node --test tests/*.test.js",
+    "build:client": "tsdown --config tsdown.client.config.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

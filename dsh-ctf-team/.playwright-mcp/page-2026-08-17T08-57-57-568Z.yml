@@ -1,0 +1,52 @@
+- generic [active] [ref=f5e1]:
+  - generic [ref=f5e4]:
+    - generic [ref=f5e7]:
+      - button "打开侧边栏" [ref=f5e9] [cursor=pointer]
+      - button "新建会话" [ref=f5e12] [cursor=pointer]
+      - generic [ref=f5e17]:
+        - button "添加工作区" [ref=f5e20] [cursor=pointer]
+        - button "搜索会话" [ref=f5e25] [cursor=pointer]
+      - button [ref=f5e33] [cursor=pointer]
+    - generic [ref=f5e46]:
+      - generic [ref=f5e49]:
+        - generic [ref=f5e53]: 探索未至之境
+        - generic [ref=f5e54]: 预览版
+      - generic [ref=f5e55]:
+        - button "选择工作区" [ref=f5e56] [cursor=pointer]
+        - button "标准模式" [ref=f5e64] [cursor=pointer]
+      - generic [ref=f5e74] [cursor=pointer]:
+        - textbox "选择工作区" [ref=f5e77]:
+          - /placeholder: 选择一个工作区开始
+        - generic [ref=f5e78]:
+          - generic [ref=f5e79]:
+            - button "命令" [disabled]
+          - generic [ref=f5e80]:
+            - button "发送消息" [disabled]
+  - region "CTF Board" [ref=f5e83]:
+    - generic [ref=f5e84]:
+      - generic [ref=f5e85]:
+        - strong [ref=f5e86]: 🏁 CTF Board
+        - generic [ref=f5e87]: loading · -
+      - generic [ref=f5e88]:
+        - button "刷新" [ref=f5e89] [cursor=pointer]
+        - button "收起" [ref=f5e90] [cursor=pointer]
+    - generic [ref=f5e91]:
+      - generic [ref=f5e92]: 挑战 0
+      - generic [ref=f5e93]: Ops 0
+      - generic [ref=f5e94]: Peers 0
+      - generic [ref=f5e95]: WebRTC ready
+    - main [ref=f5e96]:
+      - complementary [ref=f5e97]:
+        - group [ref=f5e98]:
+          - generic "+ 新建挑战" [ref=f5e99] [cursor=pointer]
+          - option "web"
+          - option "pwn"
+          - option "crypto"
+          - option "rev"
+          - option "forensic"
+          - option "misc" [selected]
+          - option "pending" [selected]
+          - option "solving"
+          - option "solved"
+        - generic [ref=f5e100]: 暂无挑战
+      - generic [ref=f5e102]: 暂无挑战，先创建一个。
