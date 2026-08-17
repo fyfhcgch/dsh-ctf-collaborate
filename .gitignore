@@ -1,0 +1,31 @@
+# Dependencies
+**/node_modules/
+
+# Build outputs
+**/dist/
+
+# Local runtime data
+**/data/*.db
+**/data/*.db-*
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Codex / browser / IDE metadata
+.marscode/
+.playwright-mcp/
+**/.marscode/
+**/.playwright-mcp/
+
+# Operating-system and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

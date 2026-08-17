@@ -1,6 +1,0 @@
-- generic [ref=f1e4]:
-  - generic [ref=f1e5]: HARNESS
-  - generic [ref=f1e6]:
-    - generic [ref=f1e7]: Failed to load plugins
-    - generic [ref=f1e8]: dsh-ctf-team
-    - generic [ref=f1e9]: "failed to apply loader entry 362dff00 (dsh-ctf-team): cannot get property \"remote.ctfTeam\" without inject"
