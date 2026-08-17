@@ -5,15 +5,17 @@
 
 | | |
 |---|---|
-| 插件代码 | `D:\dsh-harness-ctf-agent\plugins\submit-gateway\` |
+| 插件代码 | `dsh-ctf-team/plugins/submit-gateway/` |
 | 服务名 | `ctx.submitGateway` |
 | 硬性依赖 | `inject: ["blackboard", "planner", "webServer"]` |
 | 端点 | `POST http://127.0.0.1:3080/api/ctf/submit`（JSON，大小上限 64KB） |
 
 ## 用法
 
-```powershell
-Invoke-WebRequest http://127.0.0.1:3080/api/ctf/submit -Method Post -ContentType "application/json" -Body '{
+```sh
+curl -X POST http://127.0.0.1:3080/api/ctf/submit \
+  -H 'Content-Type: application/json' \
+  --data '{
   "planId":"plan-test-crypto",
   "category":"crypto",
   "title":"Crypto End-To-End Test",
@@ -22,6 +24,8 @@ Invoke-WebRequest http://127.0.0.1:3080/api/ctf/submit -Method Post -ContentType
   "attachments":[]
 }'
 ```
+
+Windows PowerShell 可使用 `Invoke-WebRequest` 发送同样的 JSON。成功响应为 HTTP 200；请求体超过 64 KiB 返回 413，非 POST 请求返回 405。
 
 响应（200）：`{"ok":true,"planId":"plan-test-crypto","category":"crypto","status":"running","message":"计划已送入 planner，专家将自动认领执行","at":"…"}`
 

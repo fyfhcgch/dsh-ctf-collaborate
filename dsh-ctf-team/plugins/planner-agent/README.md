@@ -7,7 +7,7 @@ DAG，调度执行（就绪/超时/重试/阻塞/失败判定），并通过 **b
 
 | | |
 |---|---|
-| 插件代码 | `D:\dsh-harness-ctf-agent\plugins\planner-agent\` |
+| 插件代码 | `dsh-ctf-team/plugins/planner-agent/` |
 | 服务名 | `ctx.planner` |
 | 输入事件 | `planner/start` |
 | 输出事件 | `planner/started` `planner/task-update` `planner/flag` `planner/done` `planner/fail` `planner/resumed` `planner/cancelled` `planner/error` |
@@ -128,10 +128,12 @@ await ctx.planner.retryTask(planId, taskId);
 
 ## 开发
 
-```powershell
+```sh
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
+
 # 启动测试（挂载 blackboard + planner，覆盖 DAG/持久化/失败/外部模式/超时/重启续跑）
 node plugins/planner-agent/tests/boot-test.mjs
 ```
 
-> 实现说明：与 dsh 官方插件一致，`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
+> 实现说明：`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
 > `lib/types/index.d.ts` 提供完整 TypeScript 类型面；harness 运行时不含 TS 编译链，故不提供需编译的 src。

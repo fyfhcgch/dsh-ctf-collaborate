@@ -5,7 +5,7 @@
 
 | | |
 |---|---|
-| 插件代码 | `D:\dsh-harness-ctf-agent\plugins\crypto-expert-agent\` |
+| 插件代码 | `dsh-ctf-team/plugins/crypto-expert-agent/` |
 | 服务名 | `ctx.cryptoExpert` |
 | 硬性依赖 | `inject: ["blackboard", "planner"]`（缺失则 profile 启动失败） |
 | 接收事件 | `crypto-expert/execute-task`（`{planId, task, challenge?}`）、`crypto-expert/cancel-task`；另监听 `planner/task-update` 自动认领 |
@@ -96,9 +96,10 @@ await ctx.cryptoExpert.analyzeText(text, { rsaParams?, maxKeyLen?, caesarTop? })
 
 ## 开发
 
-```powershell
-node plugins/crypto-expert-agent/tests/boot-test.mjs   # 启动测试（本地确定性密文）
+```sh
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
+node plugins/crypto-expert-agent/tests/boot-test.mjs   # 本地确定性密文，无网络依赖
 ```
 
-> 实现说明：与 dsh 官方插件一致，`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
+> 实现说明：`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
 > `lib/types/index.d.ts` 提供完整 TypeScript 类型面。

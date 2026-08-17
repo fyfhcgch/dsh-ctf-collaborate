@@ -52,6 +52,11 @@ export function setupApi(ctx: any, mountPath: string, broadcast: Broadcaster, se
     heartbeat.unref?.()
     req.on?.('close', () => { close(); detach() })
   })
+  server.get(`${api}/status`, (_req, res) => res.json({
+    ok: true,
+    sseClients: broadcast.clientCount(),
+    challengeCount: service.listChallenges().length,
+  }))
   server.get(`${api}/challenges`, (_req, res) => res.json(service.listChallenges()))
   server.get(`${api}/challenges/:cid`, (req, res) => {
     try { res.json(service.getDetail(req.params.cid)) } catch (error) { sendError(res, error) }

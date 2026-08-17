@@ -156,8 +156,8 @@ ok("sandbox/ping 事件被 dsh-ctf-team 监听（无抛错）");
 console.log("== SQLite 黑板与 /ctf-team 路由 ==");
 assert.ok(ctx.webServer.routes.has("/ctf-team"), "/ctf-team prefix route registered");
 ok("/ctf-team 前缀路由已挂载（与 /api/ctf/submit 无冲突）");
-// 通过 /ctf-team 路由处理器直接调用 API 验证 SQLite 黑板 CRUD
-const handler = ctx.webServer.routes.get("/ctf-team");
+// 通过实际的精确 API 路由处理器验证 SQLite 黑板状态
+const handler = ctx.webServer.routes.get("/ctf-team/api/status");
 assert.ok(typeof handler === "function", "handler is callable");
 const apiRes = await callRoute(handler, "GET", "/ctf-team/api/status");
 assert.equal(apiRes.status, 200, "/ctf-team/api/status 200");

@@ -9,6 +9,7 @@ export function createBroadcast() {
       const data = `data: ${JSON.stringify(event)}\n\n`
       for (const client of clients) { try { client.write(data) } catch { clients.delete(client) } }
     },
+    clientCount() { return clients.size },
     close() { for (const client of clients) client.close(); clients.clear() },
   }
 }

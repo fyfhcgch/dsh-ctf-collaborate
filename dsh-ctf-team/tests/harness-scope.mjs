@@ -8,7 +8,16 @@ export async function loadHarnessBoot() {
   if (!scope) {
     throw new Error('Set DSH_HARNESS_SCOPE to the directory containing dsh-app-boot before running Harness boot tests')
   }
-  const entry = join(scope, 'dsh-app-boot', 'lib', 'index.js')
-  await access(entry)
-  return import(pathToFileURL(entry).href)
+  const candidates = [
+    join(scope, 'dsh-app-boot', 'lib', 'index.js'),
+    join(scope, 'lib', 'index.js'),
+    join(scope, 'app-boot', 'lib', 'index.js'),
+  ]
+  for (const entry of candidates) {
+    try {
+      await access(entry)
+      return import(pathToFileURL(entry).href)
+    } catch { /* try the next supported Harness layout */ }
+  }
+  throw new Error(`Cannot find dsh-app-boot under DSH_HARNESS_SCOPE=${scope}`)
 }

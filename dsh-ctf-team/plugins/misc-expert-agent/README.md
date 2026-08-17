@@ -5,7 +5,7 @@
 
 | | |
 |---|---|
-| 插件代码 | `D:\dsh-harness-ctf-agent\plugins\misc-expert-agent\` |
+| 插件代码 | `dsh-ctf-team/plugins/misc-expert-agent/` |
 | 服务名 | `ctx.miscExpert` |
 | 硬性依赖 | `inject: ["blackboard", "planner"]`（缺失则 profile 启动失败） |
 | 接收事件 | `misc-expert/execute-task`（`{planId, task, challenge?}`）、`misc-expert/cancel-task`；另监听 `planner/task-update` 自动认领 |
@@ -92,9 +92,10 @@ await ctx.miscExpert.solveData(data, { caesarTop? }); // 公开求解管线
 
 ## 开发
 
-```powershell
-node plugins/misc-expert-agent/tests/boot-test.mjs   # 启动测试（本地确定性数据）
+```sh
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
+node plugins/misc-expert-agent/tests/boot-test.mjs   # 本地确定性数据，无网络依赖
 ```
 
-> 实现说明：与 dsh 官方插件一致，`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
+> 实现说明：`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
 > `lib/types/index.d.ts` 提供完整 TypeScript 类型面。

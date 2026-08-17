@@ -3,8 +3,7 @@
 **外部 Docker 沙箱执行服务** — run arbitrary commands / scripts inside disposable containers through the
 **Docker Engine API**, built as a [dsh-harness](https://github.com/deepseek-ai/deepseek-harness) cordis bundle plugin.
 
-这是之前架构评审中唯一缺失的一环：`调用沙箱执行服务（外部 docker api），不要直接本地 shell`。
-本插件把「执行任意代码」从宿主 shell 移进一次性容器：
+本插件把 CTF 题目代码执行放入一次性容器，通过 Docker Engine API 完成调用；宿主机不会执行题目命令：
 
 - **纯 HTTP 客户端，零本地 shell**：整个插件只用 `node:http` / `node:https` / `node:net` 与 Docker Engine API
   对话（`/_ping`、`/version`、`/info`、`/images/create`、`/containers/create|start|wait|kill|logs|json|archive|remove`）。
@@ -24,7 +23,7 @@
 
 | | |
 |---|---|
-| Plugin code | `D:\dsh-harness-ctf-agent\plugins\docker-sandbox-plugin\` |
+| Plugin code | `dsh-ctf-team/plugins/docker-sandbox-plugin/` |
 | Service name | `ctx.dockerSandbox`（dsh-base 内置 `ctx.sandbox` 供 harness 自身工具沙箱使用，本插件以独立服务名注册避免冲突） |
 | Hard dependency | `inject: ["blackboard"]` |
 | Command channel | `ctx.emit("sandbox/command", { op, ... })` |
@@ -109,10 +108,15 @@ export function apply(ctx: Context) {
 
 ## 开发
 
-```powershell
+```sh
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
+
 # standalone boot 测试：mock Docker daemon（HTTP）+ 真实 dsh-app-boot 装载
 node plugins/docker-sandbox-plugin/tests/boot-test.mjs
 
-# 全插件集成装载测试（8 个插件按真实 profile 组合）
+# 全插件集成装载测试（8 个外部插件 + dsh-ctf-team）
 node tests/integration-boot-test.mjs
+node tests/merge-ctf-team-boot-test.mjs
 ```
+
+standalone 测试使用本地 mock Docker Engine API，不需要实际 Docker daemon。生产环境没有 daemon 时，插件仍会启动并进入 `available=false` 的降级模式，`run()` 返回 `EUNREACHABLE`。

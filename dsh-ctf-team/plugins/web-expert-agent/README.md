@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| 插件代码 | `D:\dsh-harness-ctf-agent\plugins\web-expert-agent\` |
+| 插件代码 | `dsh-ctf-team/plugins/web-expert-agent/` |
 | 服务名 | `ctx.webExpert` |
 | 硬性依赖 | `inject: ["blackboard", "planner"]`（两服务就绪才启动，缺失则 profile 启动失败） |
 | 接收事件 | `web-expert/execute-task`（`{planId, task, challenge?}`）、`web-expert/cancel-task`；另监听 `planner/task-update` 自动认领 |
@@ -100,9 +100,10 @@ await ctx.webExpert.probeUrl(url, options?); // 底层探测封装
 
 ## 开发
 
-```powershell
+```sh
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
 node plugins/web-expert-agent/tests/boot-test.mjs   # 启动测试（本地回环靶场）
 ```
 
-> 实现说明：与 dsh 官方插件一致，`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
+> 实现说明：`lib/index.js` 为可加载实现（ESM + JSDoc 类型），
 > `lib/types/index.d.ts` 提供完整 TypeScript 类型面；harness 运行时不含 TS 编译链。

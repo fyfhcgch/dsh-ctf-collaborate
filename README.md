@@ -1,6 +1,6 @@
 # dsh-ctf-collaborate
 
-DSH CTF 协作插件代码仓库，为 DeepSeek Harness 提供多人 CTF 题目管理、共享笔记、Agent 任务和证据整理能力。
+DeepSeek Harness 的 CTF 协作插件集合。仓库当前只保留 `dsh-ctf-team` 一个项目目录；原独立 CTF Agent 插件已经整合到 `dsh-ctf-team/plugins/`，可以作为一个 web Profile 一次安装。
 
 ## 功能概览
 
@@ -9,16 +9,18 @@ DSH CTF 协作插件代码仓库，为 DeepSeek Harness 提供多人 CTF 题目�
 - 支持 Agent 任务、流式思考日志、任务结果持久化和并发限制。
 - 通过 SSE 刷新同一 Harness Host 上的协作页面，并支持 WebRTC/P2P 操作同步。
 - 提供 Harness 侧边栏入口和独立的 `/ctf-team` Web 面板。
+- 提供 blackboard、planner、crypto/misc/web 专家、verifier、submit-gateway 和 Docker sandbox 八个协作插件。
 
 ## 环境要求
 
 - Node.js `>= 22.5.0`
 - npm
 - 已安装并可运行的 DeepSeek Harness（`dsh` 命令）
+- Docker daemon（可选；不可用时 Docker sandbox 会以降级模式启动）
 
 ## 安装与运行
 
-从 GitHub 克隆仓库后，在插件目录安装依赖并构建：
+从 GitHub 克隆仓库后，在唯一项目目录安装依赖并构建：
 
 ```sh
 git clone https://github.com/fyfhcgch/dsh-ctf-collaborate.git
@@ -27,14 +29,19 @@ npm install
 npm run build
 ```
 
-回到仓库根目录后执行以下命令，将本地插件安装到 Harness 的 `web` Profile：
+将主插件和 `plugins/` 下的 8 个外部插件一次安装到 Harness 的 `web` Profile：
 
 ```sh
-cd ..
-dsh plugin --profile web add file:./dsh-ctf-team
+node scripts/install-profile-plugins.mjs
 ```
 
-随后重启 Harness 服务进程。插件默认提供 `/ctf-team` 页面；队长启动服务后，可将 `http://HOST:3080/ctf-team` 发给其他队员共同使用。
+脚本默认使用仓库内 `.profile/web` 作为临时 Profile。使用现有 Profile 时设置 `DSH_PROFILE_DIR`，或设置 `DSH_HOME` 让脚本定位 `$DSH_HOME/profiles/web`：
+
+```sh
+DSH_PROFILE_DIR=/path/to/dsh/profiles/web node scripts/install-profile-plugins.mjs
+```
+
+随后重启 Harness 服务进程。插件默认提供 `/ctf-team` 页面；队长启动服务后，可将 `http://HOST:3080/ctf-team` 发给其他队员共同使用。只安装主插件时才使用 `dsh plugin --profile web add file:./dsh-ctf-team`。
 
 > `127.0.0.1` 只代表当前机器。局域网协作时，请使用队长机器的局域网 IP，并确保 Harness 监听外部网卡且防火墙放行 3080 端口。
 
@@ -45,6 +52,25 @@ cd dsh-ctf-team
 npm install
 npm run build
 npm test
+```
+
+完整 Harness boot 测试需要设置 `DSH_HARNESS_SCOPE`，指向包含 `dsh-app-boot` 的 `@deepseek-ai` 目录：
+
+```sh
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
+node --test tests/integration-boot-test.mjs tests/merge-ctf-team-boot-test.mjs
+```
+
+也可以运行各外部插件的独立 boot 测试：
+
+```sh
+node plugins/blackboard-plugin/tests/boot-test.mjs
+node plugins/planner-agent/tests/boot-test.mjs
+node plugins/crypto-expert-agent/tests/boot-test.mjs
+node plugins/misc-expert-agent/tests/boot-test.mjs
+node plugins/web-expert-agent/tests/boot-test.mjs
+node plugins/verifier-agent/tests/boot-test.mjs
+node plugins/docker-sandbox-plugin/tests/boot-test.mjs
 ```
 
 也可以分别构建 Web UI、后端和客户端：
@@ -59,6 +85,8 @@ npm run build:client
 
 - `dsh-ctf-team/src/` — TypeScript 源码及 Web UI 源码
 - `dsh-ctf-team/tests/` — Node.js 测试用例
+- `dsh-ctf-team/plugins/` — 与主插件一起维护的 8 个外部 CTF 插件
+- `dsh-ctf-team/scripts/install-profile-plugins.mjs` — 一次安装完整 web Profile
 - `dsh-ctf-team/cordis-manifest.yml` / `dsh-ctf-team/cordis.patch.yml` — Harness 插件配置
 - `dsh-ctf-team/package.json` — npm 包信息、依赖和构建脚本
 - `dsh-ctf-team/README.md` — 功能、配置和 HTTP/SSE 接口说明
@@ -79,6 +107,12 @@ config:
 ```
 
 更多配置项、使用流程、Agent Host 适配器和 HTTP/SSE 接口，请参阅 [`dsh-ctf-team/README.md`](dsh-ctf-team/README.md)。
+
+## 当前限制
+
+- Docker sandbox 只通过 Docker Engine API 执行容器，不会在宿主机执行题目命令；没有 Docker daemon 时插件仍会启动，但执行请求返回 `EUNREACHABLE`。
+- `/api/ctf/submit` 由独立的 submit-gateway 插件提供，默认路径为 `http://HOST:3080/api/ctf/submit`。
+- 当前协作页面没有登录和权限控制；需要在可信网络中使用，并自行配置 Harness 的监听地址和防火墙。
 
 ## 许可
 

@@ -1,6 +1,6 @@
 # DSH CTF Team
 
-`dsh-ctf-team` 是 DeepSeek Harness 的持久化 CTF 团队协作插件。0.4.0 提供工作区入口、题目管理、共享笔记、Agent 任务、证据库、better-sqlite3 持久化、SSE 实时刷新和 WebRTC 操作同步。
+`dsh-ctf-team` 是 DeepSeek Harness 的持久化 CTF 团队协作插件。0.4.0 提供工作区入口、题目管理、共享笔记、Agent 任务、证据库、better-sqlite3 持久化、SSE 实时刷新和 WebRTC 操作同步。本目录同时维护完成自动化 CTF 工作流所需的 8 个外部插件；仓库中不再保留旧的独立上传目录。
 
 ## 核心功能
 
@@ -14,17 +14,21 @@
 
 ## 安装
 
-在项目上级目录执行：
+在本目录安装并构建主插件，然后将主插件和 8 个外部插件一次写入 web Profile：
 
 ```sh
-dsh plugin --profile web add file:./dsh-ctf-team
+npm install
+npm run build
+node scripts/install-profile-plugins.mjs
 ```
+
+脚本默认使用 `.profile/web`。使用现有 Profile 时设置 `DSH_PROFILE_DIR=/path/to/dsh/profiles/web`，或设置 `DSH_HOME` 后重新执行脚本。只安装主插件时，可在本目录上级执行 `dsh plugin --profile web add file:./dsh-ctf-team`。
 
 重启 Harness。默认配置会在 Host 平面加载插件，并启用 `/ctf-team` Web 页面与 SSE API。
 
 ## Agent 插件集合
 
-原 `dsh-harness-ctf-agent-upload` 中独立的 CTF Agent 插件已经合并到本目录的 `plugins/`：
+所有外部插件都位于本目录的 `plugins/`，并由 `scripts/install-profile-plugins.mjs` 与主插件一起安装：
 
 - `blackboard-plugin`：持久化共享黑板。
 - `planner-agent`：计划拆分、调度、重试和重启恢复。
@@ -35,7 +39,7 @@ dsh plugin --profile web add file:./dsh-ctf-team
 
 主插件中的 pwn/reverse 专家模板会按题目分类自动应用，`sandbox_run` 会优先委托同目录的 `dockerSandbox` 服务。
 
-可用 `scripts/install-profile-plugins.mjs` 将这些插件和主插件一次写入 web Profile。默认使用仓库内 `.profile/web` 作为临时 Profile；生产环境请设置 `DSH_PROFILE_DIR` 或 `DSH_HOME`。
+Profile 层会把 planner 切换为 `executionMode: external`，由对应专家插件认领任务；没有 Docker daemon 时 `docker-sandbox-plugin` 会保持降级状态，不影响其他插件启动。
 
 ## 使用流程
 
@@ -94,6 +98,7 @@ config:
 
 - `GET /ctf-team`
 - `GET /ctf-team/api/events`
+- `GET /ctf-team/api/status`
 - `GET /ctf-team/api/challenges`
 - `GET /ctf-team/api/challenges/:cid`
 - `POST /ctf-team/api/challenges`
@@ -104,6 +109,8 @@ config:
 - `POST /ctf-team/api/evidence`
 - `POST /ctf-team/api/thoughts`
 - `POST /ctf-team/api/agent/spawn`
+
+`GET /ctf-team/api/status` 返回 `{ ok, sseClients, challengeCount }`，可用于确认页面后端和 SQLite 黑板已经加载。submit-gateway 的独立入口是 `POST /api/ctf/submit`，不是 `/ctf-team/api` 下的路由。
 
 ## Agent Host 适配器
 
@@ -130,4 +137,11 @@ npm test
 
 运行环境要求 Node.js 22.5 或更高版本。后端使用 `better-sqlite3`，运行 `npm install` 时需要当前平台可用的 Node 原生扩展构建/预编译环境。
 
-主插件测试：`npm test`。完整 Harness boot 测试还需要设置 `DSH_HARNESS_SCOPE`，指向包含 `dsh-app-boot` 的 `@deepseek-ai` 安装目录，然后运行 `node tests/integration-boot-test.mjs`。
+主插件测试：`npm test`。完整 Harness boot 测试还需要设置 `DSH_HARNESS_SCOPE`，指向包含 `dsh-app-boot` 的 `@deepseek-ai` 安装目录：
+
+```sh
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
+node --test tests/integration-boot-test.mjs tests/merge-ctf-team-boot-test.mjs
+```
+
+7 个可独立启动的外部插件测试位于各自的 `plugins/*/tests/boot-test.mjs`；Docker 测试使用本地 mock Docker Engine API，不要求宿主机安装 Docker。生产运行时若 Docker daemon 不可达，沙箱服务会报告 `available=false` 并让执行请求返回 `EUNREACHABLE`。

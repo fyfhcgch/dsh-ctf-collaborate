@@ -12,8 +12,8 @@ the plugin is a profile bundle, so it auto-loads with the harness.
 
 | | |
 |---|---|
-| Persistence file | `D:\dsh-harness-ctf-agent\persistent_data\blackboard.json` |
-| Plugin code | `D:\dsh-harness-ctf-agent\plugins\blackboard-plugin\` |
+| Persistence file | `persistent_data/blackboard.json` relative to the Harness profile working directory; a profile `config.file` takes precedence, otherwise `DSH_BLACKBOARD_FILE` can provide the path |
+| Plugin code | `dsh-ctf-team/plugins/blackboard-plugin/` |
 | Service name | `ctx.blackboard` |
 | Notification events | `blackboard/ready` `blackboard/set` `blackboard/update` `blackboard/append` `blackboard/delete` `blackboard/clear-section` `blackboard/clear` `blackboard/persist` `blackboard/change` `blackboard/error` |
 | Command channel | `ctx.emit("blackboard/command", { op, section, key, value })` |
@@ -111,7 +111,8 @@ means the mutation was a no-op (nothing written, no event). `previous` is the pr
 
 ## Development
 
-```powershell
-# run the standalone boot test (mounts the plugin exactly like dsh profile boot)
+```sh
+# Set this once to the @deepseek-ai directory containing dsh-app-boot.
+export DSH_HARNESS_SCOPE=/path/to/deepseek-harness/node_modules/.pnpm/node_modules/@deepseek-ai
 node plugins/blackboard-plugin/tests/boot-test.mjs
 ```
