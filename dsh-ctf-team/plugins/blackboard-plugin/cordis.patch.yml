@@ -1,0 +1,11 @@
+# dsh-blackboard bundle patch: inserts the durable blackboard row over the
+# profile entry list (dsh-base, dsh-web-app, ...). The row id `blackboard`
+# can be overridden or disabled later by the profile's own cordis.patch.yml
+# or a --patch overlay. `config.file` pins the persistence target; the
+# plugin's schema default is the same path, so removing this key changes
+# nothing.
+- insert:
+    - id: blackboard
+      name: '@dsh-external/dsh-blackboard'
+      config:
+        file: 'persistent_data/blackboard.json'

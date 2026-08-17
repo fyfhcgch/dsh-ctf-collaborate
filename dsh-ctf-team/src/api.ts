@@ -80,7 +80,7 @@ export function setupApi(ctx: any, mountPath: string, broadcast: Broadcaster, se
   server.post(`${api}/agent/spawn`, async (req, res) => {
     try {
       const body = bodyOf(req.body)
-      res.json({ ok: true, task: await service.spawnAgent(body.challengeId, body.ownerUserId, body.prompt) })
+      res.json({ ok: true, task: await service.spawnAgent(body.challengeId, body.ownerUserId, body.prompt, body.expertType) })
     } catch (error) { sendError(res, error) }
   })
   if (server.dispose && typeof ctx.effect === 'function') {

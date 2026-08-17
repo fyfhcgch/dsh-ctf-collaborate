@@ -1,0 +1,18 @@
+# dsh-crypto-expert bundle patch: inserts the crypto-expert row over the
+# profile entry list. The row id `cryptoExpert` can be overridden or disabled
+# later by the profile's own cordis.patch.yml or a --patch overlay.
+#
+# Hard dependencies: the crypto expert requires the `blackboard` service row
+# (@dsh-external/dsh-blackboard) and the `planner` service row
+# (@dsh-external/dsh-planner). It declares `inject: ["blackboard", "planner"]`
+# so the loader keeps its fiber pending until BOTH are available.
+#
+# Offline-first: algorithm recognition rules and solvers are compiled into the
+# plugin source; no remote payload/rule downloads at runtime.
+- insert:
+    - id: cryptoExpert
+      name: '@dsh-external/dsh-crypto-expert'
+      config:
+        section: 'cryptoExpert'
+        autoClaim: true
+        resumeOnStart: true

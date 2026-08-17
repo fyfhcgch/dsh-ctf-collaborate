@@ -1,4 +1,4 @@
-import type { TeamP2PController, TeamP2PStatus } from './p2p.js'
+import type { TeamP2PController, TeamP2PRemote, TeamP2PStatus } from './p2p.js'
 
 export type ChallengeCategory = 'pwn' | 'crypto' | 'web' | 'rev' | 'misc' | 'forensic'
 export type ChallengeStatus = 'pending' | 'solving' | 'solved'
@@ -15,8 +15,9 @@ export interface Challenge {
 export interface TeamNote { id: string; challengeId: string; authorUserId: string; content: string; createdAt: number }
 export interface AgentThought { id: string; challengeId: string; source: string; content: string; createdAt: number }
 export interface EvidenceItem { id: string; challengeId: string; type: 'tool_output' | 'file_extract' | 'log'; content: string; createdAt: number }
-export interface SubTask { taskId: string; challengeId: string; ownerUserId: string; prompt: string; done: boolean; result: string; createdAt: number }
-export interface ChallengeDetail { challenge: Challenge; notes: TeamNote[]; thoughts: AgentThought[]; evidence: EvidenceItem[]; tasks: SubTask[] }
+export interface SubTask { taskId: string; challengeId: string; ownerUserId: string; expertType: 'general' | 'pwn' | 'reverse'; prompt: string; done: boolean; result: string; createdAt: number }
+export interface SharedNote { challengeId: string; content: string; updatedBy: string; updatedAt: number }
+export interface ChallengeDetail { challenge: Challenge; sharedNote?: SharedNote | null; notes: TeamNote[]; thoughts: AgentThought[]; evidence: EvidenceItem[]; tasks: SubTask[] }
 export interface TeamIdentity { teamId: string; peerId: string; createdAt: number }
 export interface SyncStatus { teamId: string; peerId: string; operationCursor: number; operationCount: number }
 
@@ -29,7 +30,7 @@ export interface TeamBoardRemote {
   addNote(input: { challengeId: string; authorUserId?: string; content: string }): Promise<TeamNote>
   addEvidence(input: { challengeId: string; type?: EvidenceItem['type']; content: string }): Promise<EvidenceItem>
   addThought(input: { challengeId: string; source?: string; content: string }): Promise<AgentThought>
-  spawnAgent(input: { challengeId: string; ownerUserId?: string; prompt: string }): Promise<{ taskId: string; response: string }>
+  spawnAgent(input: { challengeId: string; ownerUserId?: string; expertType?: 'general' | 'pwn' | 'reverse'; prompt: string }): Promise<{ taskId: string; response: string }>
   identity(): Promise<TeamIdentity>
   syncStatus(): Promise<SyncStatus>
 }
@@ -51,6 +52,7 @@ interface BoardState {
   inviteOffer?: string
   inviteAnswer?: string
   createOpen: boolean
+  mode: 'server' | 'p2p'
 }
 
 const categories: ChallengeCategory[] = ['web', 'pwn', 'crypto', 'rev', 'forensic', 'misc']
@@ -71,12 +73,14 @@ export class TeamBoard {
     challenges: [],
     loading: false,
     createOpen: false,
+    mode: 'server',
   }
 
   constructor(
     private readonly remote: TeamBoardRemote,
     private readonly p2p: TeamP2PController,
     private readonly log: (message: string) => void = () => {},
+    private readonly localRemote?: TeamBoardRemote & TeamP2PRemote & { importFrom?(remote: TeamBoardRemote): Promise<void> },
   ) {}
 
   mount(): void {
@@ -135,10 +139,11 @@ export class TeamBoard {
     if (!options.quiet) this.state.loading = true
     this.state.error = undefined
     try {
+      const remote = this.currentRemote()
       const [identity, sync, challenges] = await Promise.all([
-        this.remote.identity(),
-        this.remote.syncStatus(),
-        this.remote.list(),
+        remote.identity(),
+        remote.syncStatus(),
+        remote.list(),
       ])
       this.state.identity = identity
       this.state.sync = sync
@@ -160,7 +165,7 @@ export class TeamBoard {
   private readonly onExternalSync = () => { void this.refresh({ quiet: true }) }
 
   private connectSse(): void {
-    if (typeof EventSource === 'undefined') return
+    if (this.state.mode !== 'server' || typeof EventSource === 'undefined') return
     try {
       const source = new EventSource('/ctf-team/api/events')
       source.onmessage = () => { void this.refresh({ quiet: true }) }
@@ -179,7 +184,7 @@ export class TeamBoard {
       this.state.detail = undefined
       return
     }
-    this.state.detail = await this.remote.detail(this.state.selectedId)
+    this.state.detail = await this.currentRemote().detail(this.state.selectedId)
   }
 
   private async run(message: string, operation: () => Promise<unknown>): Promise<void> {
@@ -214,6 +219,7 @@ export class TeamBoard {
       return
     }
     if (action === 'refresh') { await this.refresh(); return }
+    if (action === 'switch-mode') { await this.switchMode(target.dataset.mode as 'server' | 'p2p'); return }
     if (action === 'select') {
       const id = target.dataset.id
       if (id) {
@@ -234,7 +240,7 @@ export class TeamBoard {
     if (action === 'delete' && this.state.selectedId) {
       const id = this.state.selectedId
       await this.run('挑战已删除', async () => {
-        await this.remote.delete(id)
+        await this.currentRemote().delete(id)
         this.state.selectedId = undefined
         this.state.detail = undefined
       })
@@ -279,7 +285,7 @@ export class TeamBoard {
     const id = target.dataset.id
     const status = target.value as ChallengeStatus
     await this.run('状态已更新', async () => {
-      await this.remote.update(id, { status })
+      await this.currentRemote().update(id, { status })
       this.state.selectedId = id
     })
   }
@@ -292,7 +298,7 @@ export class TeamBoard {
     const data = new FormData(form)
     if (action === 'create') {
       await this.run('挑战已创建', async () => {
-        const created = await this.remote.create({
+        const created = await this.currentRemote().create({
           challengeId: text(data, 'challengeId') || undefined,
           title: text(data, 'title'),
           category: (text(data, 'category') || 'misc') as ChallengeCategory,
@@ -313,7 +319,7 @@ export class TeamBoard {
     const challengeId = this.state.selectedId
     if (action === 'update') {
       await this.run('挑战详情已保存', async () => {
-        await this.remote.update(challengeId, {
+        await this.currentRemote().update(challengeId, {
           title: text(data, 'title'),
           category: text(data, 'category') as ChallengeCategory,
           description: text(data, 'description'),
@@ -326,7 +332,7 @@ export class TeamBoard {
     }
     if (action === 'note') {
       await this.run('笔记已添加', async () => {
-        await this.remote.addNote({ challengeId, authorUserId: text(data, 'authorUserId') || this.state.identity?.peerId, content: text(data, 'content') })
+        await this.currentRemote().addNote({ challengeId, authorUserId: text(data, 'authorUserId') || this.state.identity?.peerId, content: text(data, 'content') })
         this.clearDraft('note')
         form.reset()
       })
@@ -334,7 +340,7 @@ export class TeamBoard {
     }
     if (action === 'evidence') {
       await this.run('证据已添加', async () => {
-        await this.remote.addEvidence({ challengeId, type: (text(data, 'type') || 'log') as EvidenceItem['type'], content: text(data, 'content') })
+        await this.currentRemote().addEvidence({ challengeId, type: (text(data, 'type') || 'log') as EvidenceItem['type'], content: text(data, 'content') })
         this.clearDraft('evidence')
         form.reset()
       })
@@ -342,7 +348,7 @@ export class TeamBoard {
     }
     if (action === 'thought') {
       await this.run('思考已添加', async () => {
-        await this.remote.addThought({ challengeId, source: text(data, 'source') || undefined, content: text(data, 'content') })
+        await this.currentRemote().addThought({ challengeId, source: text(data, 'source') || undefined, content: text(data, 'content') })
         this.clearDraft('thought')
         form.reset()
       })
@@ -350,7 +356,7 @@ export class TeamBoard {
     }
     if (action === 'task') {
       await this.run('任务已提交', async () => {
-        await this.remote.spawnAgent({ challengeId, ownerUserId: text(data, 'ownerUserId') || this.state.identity?.peerId, prompt: text(data, 'prompt') })
+        await this.currentRemote().spawnAgent({ challengeId, ownerUserId: text(data, 'ownerUserId') || this.state.identity?.peerId, expertType: (text(data, 'expertType') || 'general') as 'general' | 'pwn' | 'reverse', prompt: text(data, 'prompt') })
         this.clearDraft('task')
         form.reset()
       })
@@ -366,6 +372,38 @@ export class TeamBoard {
     }
     if (action === 'complete-answer') {
       await this.run('P2P 邀请已完成', async () => { await this.p2p.completeInvite(text(data, 'invite')); this.clearDraft('complete-answer'); form.reset() })
+    }
+  }
+
+  private currentRemote(): TeamBoardRemote { return this.state.mode === 'p2p' && this.localRemote ? this.localRemote : this.remote }
+
+  private async switchMode(mode: 'server' | 'p2p'): Promise<void> {
+    if (mode === this.state.mode) return
+    if (mode === 'p2p' && !this.localRemote) {
+      this.state.error = '当前构建没有本地 P2P 存储'
+      this.render()
+      return
+    }
+    this.state.loading = true
+    this.state.error = undefined
+    try {
+      if (mode === 'p2p') {
+        await this.localRemote?.importFrom?.(this.remote)
+        this.eventSource?.close()
+        this.eventSource = undefined
+        this.state.mode = 'p2p'
+        this.state.message = '已进入无服务器 P2P 模式：后续读写只使用本机数据和 WebRTC'
+      } else {
+        this.state.mode = 'server'
+        this.connectSse()
+        this.state.message = '已切回 Harness Host 模式'
+      }
+      await this.refresh({ quiet: true })
+    } catch (cause) {
+      this.state.error = errorMessage(cause)
+    } finally {
+      this.state.loading = false
+      this.render()
     }
   }
 
@@ -389,11 +427,11 @@ export class TeamBoard {
         <header class="ctf-header">
           <div>
             <strong>🏁 CTF Board</strong>
-            <small>${escapeHtml(this.state.identity?.teamId ?? 'loading')} · ${shortId(this.state.identity?.peerId)}</small>
+            <small>${escapeHtml(this.state.identity?.teamId ?? 'loading')} · ${shortId(this.state.identity?.peerId)} · ${this.state.mode === 'p2p' ? '无服务器 P2P' : 'Harness Host'}</small>
           </div>
           <div class="ctf-header-actions">
             ${this.state.loading ? '<span class="ctf-spinner">sync</span>' : ''}
-            <button type="button" data-action="refresh">刷新</button>
+            <button type="button" data-action="refresh">刷新</button>${this.state.mode === 'p2p' ? '<button type="button" data-action="switch-mode" data-mode="server">切回服务器</button>' : '<button type="button" data-action="switch-mode" data-mode="p2p">进入无服务器 P2P</button>'}
             <button type="button" data-action="toggle">收起</button>
           </div>
         </header>
@@ -402,7 +440,7 @@ export class TeamBoard {
           <span>挑战 <b>${this.state.challenges.length}</b></span>
           <span>Ops <b>${this.state.sync?.operationCount ?? 0}</b></span>
           <span>Peers <b>${this.state.p2p?.peers.length ?? 0}</b></span>
-          <span class="${this.state.p2p?.enabled ? 'ok' : 'warn'}">${this.state.p2p?.enabled ? 'WebRTC ready' : 'WebRTC off'}</span>
+          <span class="${this.state.p2p?.enabled ? 'ok' : 'warn'}">${this.state.p2p?.enabled ? 'WebRTC ready' : 'WebRTC off'}</span><span class="${this.state.mode === 'p2p' ? 'ok' : ''}">${this.state.mode === 'p2p' ? '本地数据源' : '服务器数据源'}</span>
         </div>
         <main class="ctf-main">
           <aside class="ctf-list">
@@ -497,8 +535,8 @@ export class TeamBoard {
   }
 
   private renderTasks(detail: ChallengeDetail): string {
-    const tasks = detail.tasks.length ? detail.tasks.map((task) => `<article class="ctf-item"><b>${escapeHtml(task.ownerUserId)}</b><small>${time(task.createdAt)} · ${task.done ? 'done' : 'running'}</small><p>${escapeHtml(task.prompt)}</p>${task.result ? `<pre>${escapeHtml(task.result)}</pre>` : ''}</article>`).join('') : '<div class="ctf-empty small">暂无任务</div>'
-    return `${tasks}<form class="ctf-form inline" data-action="task"><input name="ownerUserId" placeholder="Owner（默认当前 Peer）" value="${this.draft('task', 'ownerUserId')}"><textarea name="prompt" required rows="4" placeholder="给 agent 的任务提示">${this.draft('task', 'prompt')}</textarea><button>启动任务</button></form>`
+    const tasks = detail.tasks.length ? detail.tasks.map((task) => `<article class="ctf-item"><b>${escapeHtml(task.ownerUserId)}</b><small>${time(task.createdAt)} · ${escapeHtml(task.expertType)} · ${task.done ? 'done' : 'running'}</small><p>${escapeHtml(task.prompt)}</p>${task.result ? `<pre>${escapeHtml(task.result)}</pre>` : ''}</article>`).join('') : '<div class="ctf-empty small">暂无任务</div>'
+    return `${tasks}<form class="ctf-form inline" data-action="task"><input name="ownerUserId" placeholder="Owner（默认当前 Peer）" value="${this.draft('task', 'ownerUserId')}"><select name="expertType"><option value="general">通用</option><option value="pwn">Pwn</option><option value="reverse">Reverse</option></select><textarea name="prompt" required rows="4" placeholder="给 agent 的任务提示">${this.draft('task', 'prompt')}</textarea><button>启动任务</button></form>`
   }
 
   private draft(action: string, name: string, fallback = ''): string {
@@ -520,6 +558,7 @@ export class TeamBoard {
   private renderP2P(): string {
     const p2p = this.state.p2p
     return `<div class="ctf-p2p">
+      <div class="ctf-alert ok">${this.state.mode === 'p2p' ? '当前为无服务器模式：数据保存在本机，并通过 WebRTC 与 Peer 直接同步。' : '先点击“进入无服务器 P2P”将当前题目复制到本机，再交换 Offer / Answer；切换后不再依赖中心服务器。'}</div>
       <div class="ctf-p2p-status">
         <b>${p2p?.enabled ? 'P2P 已启用' : 'P2P 未启用'}</b>
         <span>Team ${escapeHtml(p2p?.teamId ?? this.state.identity?.teamId ?? '-')}</span>

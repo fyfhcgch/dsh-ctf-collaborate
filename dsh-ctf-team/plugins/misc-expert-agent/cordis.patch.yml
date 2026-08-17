@@ -1,0 +1,17 @@
+# dsh-misc-expert bundle patch: inserts the misc-expert row over the profile
+# entry list. The row id `miscExpert` can be overridden or disabled later by
+# the profile's own cordis.patch.yml or a --patch overlay.
+#
+# Hard dependencies: the misc expert requires the `blackboard` service row
+# (@dsh-external/dsh-blackboard) and the `planner` service row
+# (@dsh-external/dsh-planner). It declares `inject: ["blackboard", "planner"]`
+# so the loader keeps its fiber pending until BOTH are available.
+#
+# Offline-first: encoding/隐写/文本转换规则与求解器全部固化在本源码。
+- insert:
+    - id: miscExpert
+      name: '@dsh-external/dsh-misc-expert'
+      config:
+        section: 'miscExpert'
+        autoClaim: true
+        resumeOnStart: true

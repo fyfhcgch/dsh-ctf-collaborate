@@ -7,6 +7,9 @@
 # Local runtime data
 **/data/*.db
 **/data/*.db-*
+**/persistent_data/
+**/tests/.tmp/
+**/tests/.tmp-*/
 
 # Local environment and secrets
 .env

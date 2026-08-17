@@ -13,7 +13,7 @@ function parseAttachmentPaths(value: unknown): string[] {
   }
 }
 
-export const TEAM_SCHEMA_VERSION = 3
+export const TEAM_SCHEMA_VERSION = 4
 
 const parseChallenge = (row: any): Challenge => ({
   challengeId: String(row.challengeId),
@@ -78,6 +78,7 @@ export function createDb(dbPath: string): TeamDb {
       taskId TEXT PRIMARY KEY,
       challengeId TEXT NOT NULL,
       ownerUserId TEXT NOT NULL,
+      expertType TEXT NOT NULL DEFAULT 'general',
       prompt TEXT NOT NULL,
       done INTEGER NOT NULL,
       result TEXT NOT NULL,
@@ -105,10 +106,14 @@ export function createDb(dbPath: string): TeamDb {
     );
   `)
   const schemaRow = db.prepare('SELECT version FROM team_schema LIMIT 1').get() as { version?: number } | undefined
+  const taskColumns = db.prepare('PRAGMA table_info(subtasks)').all() as Array<{ name?: string }>
+  if (!taskColumns.some((column) => column.name === 'expertType')) {
+    db.exec("ALTER TABLE subtasks ADD COLUMN expertType TEXT NOT NULL DEFAULT 'general'")
+  }
   if (!schemaRow) {
     db.prepare('INSERT INTO team_schema (version) VALUES (?)').run(TEAM_SCHEMA_VERSION)
-  } else if (Number(schemaRow.version) === 1 || Number(schemaRow.version) === 2) {
-    // Version 2 added the operation log; version 3 adds one editable shared note per challenge.
+  } else if ([1, 2, 3].includes(Number(schemaRow.version))) {
+    // Version 2 added the operation log, version 3 shared notes, and version 4 specialist tasks.
     db.prepare('UPDATE team_schema SET version=?').run(TEAM_SCHEMA_VERSION)
   } else if (Number(schemaRow.version) !== TEAM_SCHEMA_VERSION) {
     throw new Error(`Unsupported team database schema version: ${String(schemaRow.version)}`)
@@ -153,8 +158,8 @@ export function createDb(dbPath: string): TeamDb {
     listThoughts: (id) => { ensureOpen(); return all('SELECT * FROM agent_thoughts WHERE challengeId=? ORDER BY createdAt, id', id) as AgentThought[] },
     insertEvidence: (e) => { ensureOpen(); db.prepare('INSERT INTO evidence VALUES (:id,:challengeId,:type,:content,:createdAt)').run(named(e)) },
     listEvidence: (id) => { ensureOpen(); return all('SELECT * FROM evidence WHERE challengeId=? ORDER BY createdAt, id', id) as EvidenceItem[] },
-    insertTask: (s) => { ensureOpen(); db.prepare('INSERT OR REPLACE INTO subtasks VALUES (:taskId,:challengeId,:ownerUserId,:prompt,:done,:result,:createdAt)').run(named({ ...s, done: s.done ? 1 : 0 })) },
-    listTasks: (id) => { ensureOpen(); return all('SELECT * FROM subtasks WHERE challengeId=? ORDER BY createdAt, taskId', id).map((row) => ({ ...row, done: Boolean(row.done) })) as SubTask[] },
+    insertTask: (s) => { ensureOpen(); db.prepare('INSERT OR REPLACE INTO subtasks (taskId,challengeId,ownerUserId,expertType,prompt,done,result,createdAt) VALUES (:taskId,:challengeId,:ownerUserId,:expertType,:prompt,:done,:result,:createdAt)').run(named({ ...s, expertType: s.expertType ?? 'general', done: s.done ? 1 : 0 })) },
+    listTasks: (id) => { ensureOpen(); return all('SELECT * FROM subtasks WHERE challengeId=? ORDER BY createdAt, taskId', id).map((row) => ({ ...row, expertType: row.expertType ?? 'general', done: Boolean(row.done) })) as SubTask[] },
     appendOperation: (operation: TeamOperation) => {
       ensureOpen()
       db.prepare('INSERT OR IGNORE INTO team_operations (opId,peerId,kind,payload,createdAt) VALUES (:opId,:peerId,:kind,:payload,:createdAt)').run({

@@ -1,0 +1,22 @@
+# dsh-planner bundle patch: inserts the planner row over the profile entry
+# list. The row id `planner` can be overridden or disabled later by the
+# profile's own cordis.patch.yml or a --patch overlay.
+#
+# Hard dependency: the planner requires the `blackboard` service row (from
+# @dsh-external/dsh-blackboard). It declares `inject: ["blackboard"]`, so the
+# harness loader keeps its fiber pending until the blackboard service is
+# available, and a boot without blackboard fails loud.
+- insert:
+    - id: planner
+      name: '@dsh-external/dsh-planner'
+      config:
+        section: 'planner'
+        executionMode: 'internal'
+        internalDelayMs: 400
+        internalFailPattern: ''
+        taskTimeoutMs: 300000
+        tickMs: 250
+        maxTasks: 16
+        maxAttempts: 2
+        resumeOnStart: true
+        autoRun: true

@@ -1,0 +1,9 @@
+# dsh-submit-gateway bundle patch: inserts the submit-gateway row over the
+# profile entry list (loading order 置于 verifier 之后；依赖链由 inject 保证)。
+#
+# Hard dependencies: inject ["blackboard", "planner", "webServer"] ——
+# blackboard/planner 供 ctx.planner.start 发起计划，webServer 供路由注册
+# POST /api/ctf/submit。
+- insert:
+    - id: submitGateway
+      name: '@dsh-external/dsh-submit-gateway'

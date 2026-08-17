@@ -49,8 +49,8 @@ export class TeamRemoteService extends TypertRemoteService {
   addThought(input: AddThoughtInput): AgentThought { return this.team.addThought(input) }
 
   @Remote('spawnAgent')
-  spawnAgent(input: { challengeId: string; ownerUserId?: string; prompt: string }): Promise<{ taskId: string; response: string }> {
-    return this.team.spawnAgent(input.challengeId, input.ownerUserId, input.prompt)
+  spawnAgent(input: { challengeId: string; ownerUserId?: string; expertType?: 'general' | 'pwn' | 'reverse'; prompt: string }): Promise<{ taskId: string; response: string }> {
+    return this.team.spawnAgent(input.challengeId, input.ownerUserId, input.prompt, input.expertType)
   }
 
   @Remote('identity')

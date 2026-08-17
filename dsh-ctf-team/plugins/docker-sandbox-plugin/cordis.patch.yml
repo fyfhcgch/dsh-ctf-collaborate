@@ -1,0 +1,25 @@
+# dsh-docker-sandbox bundle patch: inserts the docker sandbox execution row
+# over the profile entry list. The row id `dockerSandbox` (service `ctx.dockerSandbox`)
+# deliberately differs from the built-in `sandbox` row (`@deepseek-ai/dsh-sandbox-local`)
+# that powers the harness's own tool sandboxing. The row can be overridden or
+# disabled later by the profile's own cordis.patch.yml or a --patch overlay.
+# `baseUrl` / `socketPath` / `npipe` select the Docker Engine API transport
+# (empty = auto-detect: Windows named pipe, unix socket, or plain TCP); when the
+# daemon is unreachable the plugin boots in degraded mode and keeps retrying on
+# the health-check interval instead of failing the profile.
+- insert:
+    - id: dockerSandbox
+      name: '@dsh-external/dsh-docker-sandbox'
+      config:
+        section: sandbox
+        defaultImage: 'alpine:latest'
+        baseUrl: ''
+        socketPath: ''
+        npipe: ''
+        pullPolicy: missing
+        defaultTimeoutMs: 30000
+        maxOutputBytes: 262144
+        maxConcurrentRuns: 4
+        healthCheckMs: 30000
+        recordToBlackboard: true
+        allowedImages: []

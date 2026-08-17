@@ -1,0 +1,28 @@
+# dsh-web-expert bundle patch: inserts the web-expert row over the profile
+# entry list. The row id `webExpert` can be overridden or disabled later by
+# the profile's own cordis.patch.yml or a --patch overlay.
+#
+# Hard dependencies: the web expert requires the `blackboard` service row
+# (@dsh-external/dsh-blackboard) and the `planner` service row
+# (@dsh-external/dsh-planner). It declares `inject: ["blackboard", "planner"]`
+# so the loader keeps its fiber pending until BOTH are available, and a boot
+# without either fails loud.
+#
+# Offline-first: no GitHub / remote rule downloads at runtime; all payloads,
+# directory dictionaries and fingerprint heuristics are compiled into the
+# plugin source. The internal HTTP client is self-contained and never reads
+# HTTP_PROXY/HTTPS_PROXY (local loopback / inter-process traffic never goes
+# through a proxy).
+- insert:
+    - id: webExpert
+      name: '@dsh-external/dsh-web-expert'
+      config:
+        section: 'webExpert'
+        autoClaim: true
+        timeoutMs: 8000
+        maxRedirects: 3
+        maxResponseBytes: 262144
+        maxDirProbe: 40
+        concurrentRequests: 4
+        userAgent: 'dsh-web-expert/0.1 (offline CTF agent)'
+        resumeOnStart: true

@@ -8,7 +8,7 @@
 - **团队共享笔记**：每道题只有一份共享正文，所有队员都能编辑和查看；保存后通过 SSE 通知其他已打开页面刷新，并记录最后编辑者和时间。
 - **Agent 分布式任务**：设置并发上限；任务、流式思考日志和最终结果统一保存到 SQLite。Host 提供 `ctfTeamSessionFork` 适配器时，任务通过独立 Harness 会话执行。
 - **证据库**：按题目归档工具输出、文件提取结果和命令日志。
-- **多人同步**：中心 Host 使用 SSE 广播本机数据库变更；浏览器之间还可使用 WebRTC/P2P 同步幂等操作日志。
+- **多人同步**：默认模式由中心 Host 使用 SSE 广播本机数据库变更；也可以切换为真正的浏览器端 WebRTC/P2P 模式，数据保存在各自浏览器本地，写入通过 DataChannel 在 Peer 之间同步，不依赖中心数据库或 SSE。
 - **可视化面板**：Harness 侧边栏工作区区域提供 `CTF Board` 按钮，不再创建覆盖工作区的悬浮按钮；独立页面 `/ctf-team` 内置 Vue 3 + Element Plus，题目、详情、笔记、Agent、证据全部在同一面板中。
 - **持久化**：默认数据库位于 `$DSH_HOME/ctf-team/ctf-team.db`，Harness 重启或插件重载后数据仍保留。
 
@@ -21,6 +21,21 @@ dsh plugin --profile web add file:./dsh-ctf-team
 ```
 
 重启 Harness。默认配置会在 Host 平面加载插件，并启用 `/ctf-team` Web 页面与 SSE API。
+
+## Agent 插件集合
+
+原 `dsh-harness-ctf-agent-upload` 中独立的 CTF Agent 插件已经合并到本目录的 `plugins/`：
+
+- `blackboard-plugin`：持久化共享黑板。
+- `planner-agent`：计划拆分、调度、重试和重启恢复。
+- `crypto-expert-agent`、`misc-expert-agent`、`web-expert-agent`：离线优先的专项求解器。
+- `verifier-agent`：候选 Flag 格式校验与计划联动。
+- `submit-gateway`：`POST /api/ctf/submit` 入口。
+- `docker-sandbox-plugin`：通过 Docker Engine API 执行一次性沙箱任务，不调用宿主 shell。
+
+主插件中的 pwn/reverse 专家模板会按题目分类自动应用，`sandbox_run` 会优先委托同目录的 `dockerSandbox` 服务。
+
+可用 `scripts/install-profile-plugins.mjs` 将这些插件和主插件一次写入 web Profile。默认使用仓库内 `.profile/web` 作为临时 Profile；生产环境请设置 `DSH_PROFILE_DIR` 或 `DSH_HOME`。
 
 ## 使用流程
 
@@ -42,6 +57,19 @@ dsh plugin --profile web add file:./dsh-ctf-team
 `127.0.0.1` 只代表队长自己的电脑。局域网协作时请使用队长机器的局域网 IP，例如 `http://192.168.1.20:3080/ctf-team`，并确保 Harness 的 Web 服务监听外部网卡及防火墙放行 3080 端口。当前队员名用于展示和溯源，尚未加入登录/权限控制。
 
 共享笔记不是评论列表：进入某道题的“共享笔记”标签后，编辑并保存这道题唯一的正文；其他队员打开同一道题会看到同一份内容。
+
+## 无服务器 P2P 模式
+
+如果不希望队员共用一台 Harness Host，可以使用侧边栏里的 `CTF Board` 进入浏览器端 P2P 模式：
+
+1. 首先打开一次 `CTF Board`，在 `P2P` 标签点击 **进入无服务器 P2P**。这一步会把当前题目和记录复制到本机浏览器的 `localStorage`；切换成功后，题目、笔记、证据和任务记录都不再请求 HTTP API。
+2. 队长点击 **生成 Offer**，把完整的邀请文本通过聊天工具发给另一名队员。
+3. 对方粘贴 Offer，点击 **生成 Answer**，再把 Answer 发回队长；队长粘贴 Answer，点击 **完成连接**。
+4. 连接建立后，两边会交换幂等操作日志。可以重复邀请多个 Peer，形成 WebRTC mesh；任意已连接 Peer 的新增或修改会转发到其余 Peer。
+
+此模式不需要中心同步服务器，但首次加载插件仍需要一个能打开 Harness 面板的环境，且 Offer/Answer 的复制粘贴本身就是 WebRTC 的手动信令。默认只配置浏览器自身的 ICE 候选，通常适合局域网；跨公网或对称 NAT 时需要在 `TeamP2PController` 的 `iceServers` 中配置 STUN/TURN。Agent 在无服务器模式下只会记录任务，不会执行 Harness Agent，因为执行 Agent 必须依赖 Host。
+
+完全从零加入一个 P2P 团队时，新 Peer 接受 Offer 会自动采用邀请中的 `teamId`；如果本机已有另一套本地数据，程序会拒绝混入不同团队。
 
 ## 配置
 
@@ -101,3 +129,5 @@ npm test
 ```
 
 运行环境要求 Node.js 22.5 或更高版本。后端使用 `better-sqlite3`，运行 `npm install` 时需要当前平台可用的 Node 原生扩展构建/预编译环境。
+
+主插件测试：`npm test`。完整 Harness boot 测试还需要设置 `DSH_HARNESS_SCOPE`，指向包含 `dsh-app-boot` 的 `@deepseek-ai` 安装目录，然后运行 `node tests/integration-boot-test.mjs`。

@@ -15,7 +15,7 @@ export interface TeamNote { id: string; challengeId: string; authorUserId: strin
 export interface SharedNote { challengeId: string; content: string; updatedBy: string; updatedAt: number }
 export interface AgentThought { id: string; challengeId: string; source: string; content: string; createdAt: number }
 export interface EvidenceItem { id: string; challengeId: string; type: 'tool_output' | 'file_extract' | 'log'; content: string; createdAt: number }
-export interface SubTask { taskId: string; challengeId: string; ownerUserId: string; prompt: string; done: boolean; result: string; createdAt: number }
+export interface SubTask { taskId: string; challengeId: string; ownerUserId: string; expertType: 'general' | 'pwn' | 'reverse'; prompt: string; done: boolean; result: string; createdAt: number }
 export type BroadcastEventType = 'challenge_update' | 'note_add' | 'shared_note_update' | 'thought_add' | 'evidence_add' | 'task_update'
 export interface BroadcastEvent<T> { type: BroadcastEventType; payload: T }
 

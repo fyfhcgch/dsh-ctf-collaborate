@@ -9,6 +9,7 @@ import { createElement } from 'react'
 import type { RemoteResult, TypertDisposer } from '@deepseek-ai/dsh-typert-protocol'
 import TYPERT_REMOTE from '../remote.js'
 import { TeamP2PController } from './p2p.js'
+import { LocalTeamStore } from './local-store.js'
 import type { TeamP2PRemote, TeamOperation } from './p2p.js'
 import { TeamBoard } from './board.js'
 import type { TeamBoardRemote } from './board.js'
@@ -82,9 +83,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   ctx.inject(['remote.ctfTeam'], (teamCtx) => {
     const wire = (teamCtx as unknown as { remote: { ctfTeam: TeamRemoteWire } }).remote.ctfTeam
     const log = (message: string) => { teamCtx.logger?.warn?.(`dsh-ctf-team: ${message}`) }
-    const controller = new TeamP2PController(adaptRemote(wire), log)
-    const board = new TeamBoard(adaptBoardRemote(wire), controller, log)
+    const serverRemote = adaptRemote(wire)
+    const serverBoardRemote = adaptBoardRemote(wire)
+    const localStore = new LocalTeamStore()
+    const controller = new TeamP2PController(localStore, log)
+    const board = new TeamBoard(serverBoardRemote, controller, log, localStore)
     teamCtx.effect(async () => {
+      localStore.setTeamId((await serverRemote.identity()).teamId)
       await controller.ready()
       board.mount()
       const slots = teamCtx as unknown as { slots: { inject: (key: 'sidebar.footer.action', callback: () => () => void) => () => void; register: (options: { name: 'sidebar.footer.action'; id: string; order?: number }, component: (props: { wide: boolean }) => unknown) => () => void } }

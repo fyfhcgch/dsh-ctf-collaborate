@@ -1,0 +1,22 @@
+# dsh-verifier bundle patch: inserts the verifier row over the profile entry
+# list. The row id `verifier` can be overridden or disabled later by the
+# profile's own cordis.patch.yml or a --patch overlay.
+#
+# Hard dependencies: the verifier requires the `blackboard` service row (from
+# @dsh-external/dsh-blackboard) and the `planner` service row (from
+# @dsh-external/dsh-planner). It declares
+# `inject: ["blackboard", "planner"]`, so the harness loader keeps its fiber
+# pending until BOTH services are available, and a boot without either fails
+# loud.
+- insert:
+    - id: verifier
+      name: '@dsh-external/dsh-verifier'
+      config:
+        section: 'verifier'
+        mode: 'mock'
+        autoVerify: true
+        extraPatterns: []
+        mockRejectPattern: ''
+        maxFlagLength: 512
+        plannerLink: true
+        dedupe: true

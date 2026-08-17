@@ -10,9 +10,11 @@ export interface TeamP2PRemote {
   changes(input?: { afterSequence?: number; limit?: number }): Promise<{ nextCursor: number; hasMore: boolean; operations: TeamOperation[] }>
   applyOperations(input: { operations: TeamOperation[] }): Promise<{ accepted: string[]; ignored: string[]; pending: TeamOperation[] }>
   syncStatus(): Promise<{ teamId: string; peerId: string; operationCursor: number; operationCount: number }>
+  /** Optional hook for a fresh local peer joining the team named by an invite. */
+  adoptTeam?(teamId: string): Promise<void> | void
 }
 
-export type TeamOperationKind = 'challenge_upsert' | 'challenge_delete' | 'note_add' | 'thought_add' | 'evidence_add' | 'task_upsert'
+export type TeamOperationKind = 'challenge_upsert' | 'challenge_delete' | 'note_add' | 'shared_note_upsert' | 'thought_add' | 'evidence_add' | 'task_upsert'
 export interface TeamOperation {
   sequence?: number
   opId: string
@@ -104,7 +106,12 @@ export class TeamP2PController {
   async acceptInvite(value: string): Promise<string> {
     const invite = decodeInvite(value)
     if (invite.mode !== 'offer') throw new Error('Expected an offer invite')
-    const identity = await this.identity()
+    let identity = await this.identity()
+    if (invite.teamId !== identity.teamId) {
+      await this.remote.adoptTeam?.(invite.teamId)
+      this.identityValue = undefined
+      identity = await this.identity()
+    }
     if (invite.teamId !== identity.teamId) throw new Error('Team ID does not match')
     const connection = this.makeConnection(invite.sessionId)
     await connection.pc.setRemoteDescription(invite.description)

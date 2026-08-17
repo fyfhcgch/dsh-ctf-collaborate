@@ -15,6 +15,7 @@ import type {
 } from './types.js'
 import { TeamInputError, TeamNotFoundError } from './types.js'
 import type { AgentRunner } from './agent-runner.js'
+import { normalizeExpertType } from './experts/index.js'
 
 const CATEGORIES = new Set<ChallengeCategory>(['pwn', 'crypto', 'web', 'rev', 'misc', 'forensic'])
 const STATUSES = new Set<ChallengeStatus>(['pending', 'solving', 'solved'])
@@ -182,11 +183,13 @@ export class TeamService {
     return thought
   }
 
-  async spawnAgent(challengeId: unknown, ownerUserId: unknown, prompt: unknown): Promise<{ taskId: string; response: string }> {
+  async spawnAgent(challengeId: unknown, ownerUserId: unknown, prompt: unknown, expertType?: unknown): Promise<{ taskId: string; response: string }> {
     const id = this.requireChallenge(challengeId)
     const runner = this.agentRunner
     if (!runner || !runner.available) throw new TeamInputError('Agent tasks are not configured', 'unsupported')
-    return runner.spawn(id, boundedActor(ownerUserId, 'ownerUserId'), requiredText(prompt, 'prompt', MAX_PROMPT))
+    const challenge = this.db.getChallenge(id)
+    const categoryExpert = challenge?.category === 'pwn' ? 'pwn' : challenge?.category === 'rev' ? 'reverse' : 'general'
+    return runner.spawn(id, boundedActor(ownerUserId, 'ownerUserId'), requiredText(prompt, 'prompt', MAX_PROMPT), normalizeExpertType(expertType ?? categoryExpert))
   }
 
   /** Apply one idempotent operation received from another peer. */
@@ -372,5 +375,6 @@ function parseRemoteEvidence(value: Record<string, unknown>): EvidenceItem {
   return { id: requireId(value.id, 'id'), challengeId: requireId(value.challengeId, 'challengeId'), type, content: remoteText(value.content, 'content'), createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now() }
 }
 function parseRemoteTask(value: Record<string, unknown>): SubTask {
-  return { taskId: requireId(value.taskId, 'taskId'), challengeId: requireId(value.challengeId, 'challengeId'), ownerUserId: remoteText(value.ownerUserId, 'ownerUserId', 128), prompt: remoteText(value.prompt, 'prompt', MAX_PROMPT), done: Boolean(value.done), result: typeof value.result === 'string' ? value.result : '', createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now() }
+  const expertType = value.expertType === 'pwn' || value.expertType === 'reverse' ? value.expertType : 'general'
+  return { taskId: requireId(value.taskId, 'taskId'), challengeId: requireId(value.challengeId, 'challengeId'), ownerUserId: remoteText(value.ownerUserId, 'ownerUserId', 128), expertType, prompt: remoteText(value.prompt, 'prompt', MAX_PROMPT), done: Boolean(value.done), result: typeof value.result === 'string' ? value.result : '', createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now() }
 }

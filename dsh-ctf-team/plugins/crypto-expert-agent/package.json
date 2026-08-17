@@ -1,0 +1,33 @@
+{
+  "name": "@dsh-external/dsh-crypto-expert",
+  "description": "密码专项专家插件：认领 planner 派发的 crypto 计划子任务（recon/analysis/exploit），内置离线算法识别与求解器（编码解码、单/多字节 XOR 爆破、凯撒/ROT/维吉尼亚启发、RSA 小整数攻击与 p/q/e 解密），产出经 ctx.blackboard 写入 clues/tool_outputs/candidate_flags，异常写入 failures，并经 ctx.planner 回报任务状态；支持重启断点恢复。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "license": "MIT"
+}

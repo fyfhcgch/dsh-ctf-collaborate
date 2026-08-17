@@ -1,0 +1,33 @@
+{
+  "name": "@dsh-external/dsh-misc-expert",
+  "description": "杂项专项专家插件：认领 planner 派发的 misc 计划子任务（recon/analysis/exploit），内置离线编码解码、隐写初检（零宽字符/大小写位/首字母）、文本转换（二进制/十进制/十六进制/八进制/反转/摩斯/培根）与求解管线，产出经 ctx.blackboard 写入 clues/tool_outputs/candidate_flags，异常写入 failures，并经 ctx.planner 回报任务状态；支持重启断点恢复。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "license": "MIT"
+}
