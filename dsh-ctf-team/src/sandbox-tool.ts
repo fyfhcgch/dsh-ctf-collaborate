@@ -21,11 +21,11 @@ export function setupSandboxTool(ctx: any, config: { sandboxImage?: string }): v
         timeoutMs: { type: 'number' },
         network: { type: 'string', enum: ['none', 'host', 'bridge'] },
         workdir: { type: 'string' },
-        env: { type: 'object', additionalProperties: { type: 'string' } },
-        mounts: { type: 'array', items: { type: 'object' } },
+        env: { type: 'object', additionalProperties: true },
+        mounts: { type: 'array', items: { type: 'object', additionalProperties: true } },
       },
       output: {
-        schema: { type: 'object' },
+        schema: { type: 'object', additionalProperties: true },
         render: (_args: any, value: any) => {
           const parts = [
             ...(typeof value?.exitCode === 'number' ? [`exit ${value.exitCode}`] : []),
