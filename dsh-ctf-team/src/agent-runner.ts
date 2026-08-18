@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { Broadcaster } from './sse-broadcast.js'
-import type { TeamDb, TeamOperationKind } from './types.js'
+import type { EvidenceItem, TeamDb, TeamOperationKind } from './types.js'
 import type { SessionForkAdapter, SessionForkExecution } from './host-adapter.js'
 import { buildExpertPrompt, normalizeExpertType, type ExpertType } from './experts/index.js'
 
@@ -76,6 +76,7 @@ export function setupAgentRunner(db: TeamDb, broadcast: Broadcaster, adapter: Se
       running += 1
       db.insertTask(task); mutationSink?.('task_upsert', task); broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } })
       let dispose: (() => void) | undefined
+      let evidenceDispose: (() => void) | undefined
       let child: SessionForkExecution | undefined
       try {
         child = await adapter.fork(buildExpertPrompt(type, buildTaskPrompt(db, challengeId, prompt)))
@@ -90,6 +91,13 @@ export function setupAgentRunner(db: TeamDb, broadcast: Broadcaster, adapter: Se
           db.insertThought(thought); mutationSink?.('thought_add', thought)
           broadcast.emit({ type: 'thought_add', payload: { challengeId, taskId } })
         })
+        evidenceDispose = child.onEvidence?.((content) => {
+          const normalized = normalizeEvidenceContent(content)
+          if (!normalized) return
+          const evidence: EvidenceItem = { id: randomUUID(), challengeId, type: 'tool_output', content: normalized, createdAt: Date.now() }
+          db.insertEvidence(evidence); mutationSink?.('evidence_add', evidence)
+          broadcast.emit({ type: 'evidence_add', payload: { challengeId, taskId } })
+        })
         const completed = { ...task, done: true, result: await child.content }
         db.insertTask(completed); mutationSink?.('task_upsert', completed)
         broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } })
@@ -99,7 +107,7 @@ export function setupAgentRunner(db: TeamDb, broadcast: Broadcaster, adapter: Se
         db.insertTask(failed); mutationSink?.('task_upsert', failed)
         broadcast.emit({ type: 'task_update', payload: { challengeId, taskId } })
         throw error
-      } finally { dispose?.(); await childDispose(child); running -= 1 }
+      } finally { dispose?.(); evidenceDispose?.(); await childDispose(child); running -= 1 }
     },
   }
 }
@@ -177,6 +185,13 @@ function normalizeThoughtContent(content: string): string {
 function thoughtKey(content: string): string {
   return createHash('sha256').update(content).digest('hex')
 }
+
+function normalizeEvidenceContent(content: string): string {
+  const trimmed = String(content ?? '').trim()
+  if (!trimmed) return ''
+  return trimmed.length <= 100_000 ? trimmed : `${trimmed.slice(0, 100_000)}\n[evidence truncated at 100000 chars]`
+}
+
 
 async function childDispose(child: SessionForkExecution | undefined): Promise<void> { await child?.dispose?.() }
 

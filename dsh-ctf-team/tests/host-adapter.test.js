@@ -45,6 +45,7 @@ test('subagent adapter executes DSML shell fallback and continues the child', as
     },
     async whenIdle() {},
   }
+  let eventHandler
   const ctx = {
     get(name) {
       if (name === 'subagents') return {
@@ -55,7 +56,7 @@ test('subagent adapter executes DSML shell fallback and continues the child', as
             localAgent: agent,
             result: Promise.resolve({
               stopReason: 'completed',
-              output: [{ type: 'text', text: '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="shell">\n<｜｜DSML｜｜parameter name="command" string="true">printf dsml-ok</｜｜DSML｜｜parameter>\n<｜｜DSML｜｜parameter name="description" string="true">probe</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>' }],
+              output: [{ type: 'text', text: '< | | DSML | | tool_calls>\n< | | DSML | | invoke name="shell">\n< | | DSML | | parameter name="command" string="true">printf dsml-ok</ | | DSML | | parameter>\n< | | DSML | | parameter name="description" string="true">probe</ | | DSML | | parameter>\n</ | | DSML | | invoke>\n</ | | DSML | | tool_calls>' }],
             }),
             async dispose() {},
           }
@@ -64,14 +65,24 @@ test('subagent adapter executes DSML shell fallback and continues the child', as
       if (name === 'agents') return { currentInitiator: () => ({ session: { id: 'parent' }, ctx: {} }) }
       return undefined
     },
-    on() { return () => {} },
+    on(_event, handler) { eventHandler = handler; return () => {} },
   }
   const adapter = getSessionForkAdapter(ctx)
   const child = await adapter.fork('solve')
+  const evidence = []
+  const thoughtMessages = []
+  child.onMessage?.((content) => thoughtMessages.push(content))
+  child.onEvidence?.((content) => evidence.push(content))
+  eventHandler?.({ id: 'child-1' }, { data: { chunk: { type: 'block-end', block: { type: 'text', text: `note\n< | | DSML | | tool_calls>< | | DSML | | invoke name=\"shell\">< | | DSML | | parameter name=\"command\">printf hidden</ | | DSML | | parameter></ | | DSML | | invoke></ | | DSML | | tool_calls>` } } } })
   const output = await child.content
   assert.match(output, /printf dsml-ok/)
   assert.match(output, /dsml-ok/)
   assert.match(output, /continued after tool output/)
+  assert.equal(thoughtMessages.filter((message) => message === 'note').length, 1)
+  assert.equal(thoughtMessages.some((message) => message.includes('hidden')), false)
   assert.equal(followups.length, 1)
   assert.match(followups[0], /dsml-ok/)
+  assert.equal(evidence.length, 1)
+  assert.match(evidence[0], /printf dsml-ok/)
+  assert.match(evidence[0], /dsml-ok/)
 })

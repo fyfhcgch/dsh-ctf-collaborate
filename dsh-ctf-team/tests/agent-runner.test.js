@@ -110,6 +110,35 @@ test('agent runner deduplicates and truncates noisy thought blocks', async () =>
   assert.match(thoughts[1].content, /thought truncated at 20000 chars/)
 })
 
+test('agent runner persists structured DSML tool records into the evidence store', async () => {
+  const evidence = []
+  const mutations = []
+  const events = []
+  const db = {
+    insertTask() {},
+    insertThought() {},
+    insertEvidence(item) { evidence.push(item) },
+  }
+  const runner = setupAgentRunner(db, { emit(event) { events.push(event) } }, {
+    async fork() {
+      return {
+        content: 'done',
+        onEvidence(listener) {
+          listener('[DSML tool 1.1] probe\n$ printf dsml-ok\n\nStatus: exitCode=0\nstdout: dsml-ok')
+          return () => {}
+        },
+      }
+    },
+  }, 1, (kind, payload) => mutations.push({ kind, payload }))
+  await runner.spawn('challenge', 'owner', 'prompt')
+  assert.equal(evidence.length, 1)
+  assert.equal(evidence[0].challengeId, 'challenge')
+  assert.equal(evidence[0].type, 'tool_output')
+  assert.match(evidence[0].content, /dsml-ok/)
+  assert.equal(mutations.find((item) => item.kind === 'evidence_add').payload.id, evidence[0].id)
+  assert.equal(events.find((event) => event.type === 'evidence_add').payload.challengeId, 'challenge')
+})
+
 test('agent runner renders DASCTF exercise JSON into concise task details', async () => {
   let forkedPrompt = ''
   const description = JSON.stringify({ exercise: { name: 'web-unserialize-1-3', description: '听说你是pop大师', difficulty: 'VERY_EASY', score: '50.0', isNeedInit: true, canRefreshEndpoint: false, endpointType: 'monopoly', endpoints: [], attachment: [] } })

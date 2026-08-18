@@ -13,6 +13,8 @@ export interface HttpServer {
 export interface SessionForkExecution {
   content: string | Promise<string>
   onMessage?(listener: (content: string) => void): () => void
+  /** Structured DSML tool records, kept separate from human-readable thought logs. */
+  onEvidence?(listener: (content: string) => void): () => void
   dispose?(): Promise<void> | void
 }
 export interface SessionForkAdapter { fork(prompt: string): Promise<SessionForkExecution> }
@@ -175,19 +177,32 @@ function createSubagentAdapter(ctx: any, subagents: any, agents: any): SessionFo
       const run = await subagents.start(providerName, { prompt: [{ type: 'text', text: prompt }], parent, label: 'CTF Team task', signal: controller.signal })
       const listeners = new Set<(content: string) => void>()
       const buffered: string[] = []
+      const evidenceListeners = new Set<(content: string) => void>()
+      const evidenceBuffered: string[] = []
       const childId = String(run?.id ?? run?.localAgent?.session?.id ?? '')
       const emit = (content: string) => {
+        const cleaned = stripDsmlMarkup(content)
+        if (!cleaned) return
+        if (!listeners.size) buffered.push(cleaned)
+        else for (const listener of listeners) listener(cleaned)
+      }
+      const archive = (content: string) => {
         if (!content) return
-        if (!listeners.size) buffered.push(content)
-        else for (const listener of listeners) listener(content)
+        if (!evidenceListeners.size) evidenceBuffered.push(content)
+        else for (const listener of evidenceListeners) listener(content)
       }
       const detach = attachHarnessSessionEvents(ctx, childId, emit)
       return {
-        content: Promise.resolve(run.result).then((result: any) => resolveSubagentContentWithDsmlFallback(run, result, emit)),
+        content: Promise.resolve(run.result).then((result: any) => resolveSubagentContentWithDsmlFallback(run, result, emit, archive)),
         onMessage(listener) {
           listeners.add(listener)
           for (const content of buffered.splice(0)) listener(content)
           return () => listeners.delete(listener)
+        },
+        onEvidence(listener) {
+          evidenceListeners.add(listener)
+          for (const content of evidenceBuffered.splice(0)) listener(content)
+          return () => evidenceListeners.delete(listener)
         },
         async dispose() {
           detach?.()
@@ -270,9 +285,11 @@ const DSML_TOOL_OUTPUT_LIMIT = 80_000
 interface DsmlToolCall { name: string; parameters: Record<string, string> }
 interface ShellRunResult { exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; stdout: string; stderr: string; truncated: boolean }
 
-async function resolveSubagentContentWithDsmlFallback(run: any, result: any, emit: (content: string) => void): Promise<string> {
+async function resolveSubagentContentWithDsmlFallback(run: any, result: any, emit: (content: string) => void, archive: (content: string) => void): Promise<string> {
   let output = resultToText(result)
-  const transcript: string[] = [output]
+  const transcript: string[] = []
+  const initialOutput = stripDsmlMarkup(output)
+  if (initialOutput) transcript.push(initialOutput)
   let exhausted = false
   for (let round = 1; round <= DSML_TOOL_ROUND_LIMIT; round += 1) {
     const calls = parseDsmlToolCalls(output).filter(isShellLikeCall).slice(0, DSML_TOOL_COMMAND_LIMIT)
@@ -288,14 +305,19 @@ async function resolveSubagentContentWithDsmlFallback(run: any, result: any, emi
       const call = calls[index]!
       const command = call.parameters.command ?? call.parameters.cmd ?? call.parameters.script ?? ''
       if (!command.trim()) {
-        observations.push(`### Tool ${index + 1}: ${call.name}\nMissing command parameter.`)
+        const missing = `### Tool ${index + 1}: ${call.name}\nMissing command parameter.`
+        observations.push(missing)
+        archive(`[DSML tool ${round}.${index + 1}] ${call.name}\n${missing}`)
         continue
       }
-      const description = call.parameters.description ?? `DSML ${call.name} command`
-      emit(`[DSML tool ${round}.${index + 1}] ${description}\n$ ${command}`)
+      const description = redactRuntimeSecrets(call.parameters.description ?? `DSML ${call.name} command`)
+      const displayCommand = redactRuntimeSecrets(command)
+      emit(`[DSML tool ${round}.${index + 1}] ${description}\n$ ${displayCommand}`)
       const executed = await runShellCommand(command)
       const rendered = renderShellResult(executed)
-      observations.push(`### Tool ${index + 1}: ${call.name}\nDescription: ${description}\nCommand:\n\`\`\`bash\n${command}\n\`\`\`\nResult:\n${rendered}`)
+      observations.push(`### Tool ${index + 1}: ${call.name}\nDescription: ${description}\nCommand:\n\`\`\`bash\n${displayCommand}\n\`\`\`\nResult:\n${rendered}`)
+      const evidence = `[DSML tool ${round}.${index + 1}] ${description}\n$ ${displayCommand}\n\n${rendered}`
+      archive(evidence)
       emit(`[DSML tool ${round}.${index + 1} result]\n${rendered}`)
     }
     const beforeSeq = Number(agent.session?.seq ?? agent.session?.events?.length ?? 0)
@@ -307,7 +329,7 @@ async function resolveSubagentContentWithDsmlFallback(run: any, result: any, emi
     })
     await agent.whenIdle()
     output = latestAssistantText(agent, beforeSeq) || output
-    transcript.push(`\n\n## DSML tool round ${round}\n${observations.join('\n\n')}\n\n## Agent continuation ${round}\n${output}`)
+    transcript.push(`\n\n## DSML tool round ${round}\n${observations.join('\n\n')}\n\n## Agent continuation ${round}\n${stripDsmlMarkup(output) || output}`)
   }
   if (exhausted && parseDsmlToolCalls(output).filter(isShellLikeCall).length) transcript.push(`\n[DSML fallback] round limit ${DSML_TOOL_ROUND_LIMIT} reached; latest assistant output still contains shell calls.`)
   return transcript.join('\n').trim()
@@ -320,17 +342,32 @@ function resultToText(result: any): string {
 }
 
 function parseDsmlToolCalls(text: string): DsmlToolCall[] {
-  if (!text.includes('DSML')) return []
+  if (!/DSML/i.test(text)) return []
   const calls: DsmlToolCall[] = []
-  const invokePattern = /<\s*｜｜DSML｜｜invoke\s+name="([^"]+)"\s*>([\s\S]*?)<\/\s*｜｜DSML｜｜invoke\s*>/g
+  // DeepSeek output has appeared with both full-width `｜｜` delimiters and
+  // ASCII delimiters rendered as `| |`; accept optional whitespace and either
+  // quote style so the parser is not tied to one renderer/font path.
+  const boundary = '[｜|¦‖](?:\\s*[｜|¦‖])?'
+  const invokePattern = new RegExp(`<\\s*${boundary}\\s*DSML\\s*${boundary}\\s*invoke\\b[^>]*\\bname\\s*=\\s*(?:"([^"]+)"|'([^']+)')[^>]*>([\\s\\S]*?)<\\/\\s*${boundary}\\s*DSML\\s*${boundary}\\s*invoke\\s*>`, 'gi')
   for (const match of text.matchAll(invokePattern)) {
     const parameters: Record<string, string> = {}
-    const body = match[2] ?? ''
-    const parameterPattern = /<\s*｜｜DSML｜｜parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/\s*｜｜DSML｜｜parameter\s*>/g
-    for (const parameter of body.matchAll(parameterPattern)) parameters[parameter[1] ?? ''] = decodeXmlEntities(parameter[2] ?? '').trim()
-    calls.push({ name: (match[1] ?? '').trim(), parameters })
+    const body = match[3] ?? ''
+    const parameterPattern = new RegExp(`<\\s*${boundary}\\s*DSML\\s*${boundary}\\s*parameter\\b[^>]*\\bname\\s*=\\s*(?:"([^"]+)"|'([^']+)')[^>]*>([\\s\\S]*?)<\\/\\s*${boundary}\\s*DSML\\s*${boundary}\\s*parameter\\s*>`, 'gi')
+    for (const parameter of body.matchAll(parameterPattern)) {
+      const name = parameter[1] ?? parameter[2] ?? ''
+      parameters[name] = decodeXmlEntities(parameter[3] ?? '').trim()
+    }
+    calls.push({ name: (match[1] ?? match[2] ?? '').trim(), parameters })
   }
   return calls
+}
+
+function stripDsmlMarkup(text: string): string {
+  if (!/DSML/i.test(text)) return text
+  const boundary = '[｜|¦‖](?:\\s*[｜|¦‖])?'
+  const invokePattern = new RegExp(`<\\s*${boundary}\\s*DSML\\s*${boundary}\\s*invoke\\b[^>]*>([\\s\\S]*?)<\\/\\s*${boundary}\\s*DSML\\s*${boundary}\\s*invoke\\s*>`, 'gi')
+  const stripped = text.replace(invokePattern, '').replace(new RegExp(`<\\/?\\s*${boundary}\\s*DSML\\s*${boundary}\\s*(?:tool_calls|invoke|parameter)\\b[^>]*>`, 'gi'), '')
+  return stripped.replace(/```(?:xml|dsml)?\s*```/gi, '').trim()
 }
 
 function isShellLikeCall(call: DsmlToolCall): boolean {
@@ -454,6 +491,7 @@ function normalizeExecution(value: any): SessionForkExecution {
   return {
     content: extractContent(value),
     onMessage: typeof value?.onMessage === 'function' ? value.onMessage.bind(value) : undefined,
+    onEvidence: typeof value?.onEvidence === 'function' ? value.onEvidence.bind(value) : undefined,
     dispose: typeof value?.dispose === 'function' ? value.dispose.bind(value) : undefined,
   }
 }
