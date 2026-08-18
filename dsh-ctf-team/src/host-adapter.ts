@@ -286,7 +286,7 @@ interface DsmlToolCall { name: string; parameters: Record<string, string> }
 interface ShellRunResult { exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; stdout: string; stderr: string; truncated: boolean }
 
 async function resolveSubagentContentWithDsmlFallback(run: any, result: any, emit: (content: string) => void, archive: (content: string) => void): Promise<string> {
-  let output = resultToText(result)
+  let output = resultToText(result, run)
   const transcript: string[] = []
   const initialOutput = stripDsmlMarkup(output)
   if (initialOutput) transcript.push(initialOutput)
@@ -335,10 +335,65 @@ async function resolveSubagentContentWithDsmlFallback(run: any, result: any, emi
   return transcript.join('\n').trim()
 }
 
-function resultToText(result: any): string {
+function resultToText(result: any, run?: any): string {
   const output = extractContent(result?.output ?? result) as string
-  if (result?.stopReason && result.stopReason !== 'completed') return `${output}\n[stopReason: ${result.stopReason}]`.trim()
-  return output
+  const stopReason = result?.stopReason
+  if (!stopReason || stopReason === 'completed') return output
+
+  const parts = [`[stopReason: ${String(stopReason)}]`]
+  const error = stopReason === 'error' ? findSubagentError(result, run) : ''
+  if (error) parts.push(`[error: ${error}]`)
+  else if (stopReason === 'error') parts.push('[error: child session ended with an error; inspect the Agent log for the turn-end diagnostic]')
+  return `${output}\n${parts.join('\n')}`.trim()
+}
+
+/**
+ * SubagentResult intentionally collapses child failures to stopReason=error.
+ * The durable child session still retains the structured turn/end diagnostic,
+ * so read it here instead of showing only an opaque status to the task panel.
+ */
+function findSubagentError(result: any, run?: any): string {
+  const candidates: unknown[] = [
+    result?.error,
+    result?.reason?.error,
+    result?.details,
+    run?.error,
+    run?.diagnostic,
+  ]
+  const events = Array.isArray(run?.localAgent?.session?.events) ? run.localAgent.session.events : []
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type === 'turn/end' && event.data?.reason?.kind === 'error') candidates.push(event.data.reason.error)
+    if (event?.data?.error) candidates.push(event.data.error)
+  }
+  for (const candidate of candidates) {
+    const text = formatSubagentError(candidate)
+    if (text) return text
+  }
+  return ''
+}
+
+function formatSubagentError(value: unknown): string {
+  if (value == null) return ''
+  if (value instanceof Error) return limitDiagnostic(redactRuntimeSecrets(value.message))
+  if (typeof value === 'string') return limitDiagnostic(redactRuntimeSecrets(value))
+  if (typeof value !== 'object') return limitDiagnostic(redactRuntimeSecrets(String(value)))
+  const item = value as Record<string, unknown>
+  const nested = item.error ?? item.cause
+  const message = typeof item.message === 'string' ? item.message : typeof item.detail === 'string' ? item.detail : nested && nested !== value ? formatSubagentError(nested) : ''
+  const code = typeof item.code === 'string' ? item.code : typeof item.type === 'string' ? item.type : ''
+  if (message) return limitDiagnostic(redactRuntimeSecrets(code && !message.startsWith(`${code}:`) ? `${code}: ${message}` : message))
+  if (code) return limitDiagnostic(redactRuntimeSecrets(code))
+  try {
+    return limitDiagnostic(redactRuntimeSecrets(JSON.stringify(value)))
+  } catch {
+    return ''
+  }
+}
+
+function limitDiagnostic(value: string): string {
+  const text = value.trim()
+  return text.length <= 2_000 ? text : `${text.slice(0, 2_000)}…`
 }
 
 function parseDsmlToolCalls(text: string): DsmlToolCall[] {

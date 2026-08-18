@@ -86,3 +86,32 @@ test('subagent adapter executes DSML shell fallback and continues the child', as
   assert.match(evidence[0], /printf dsml-ok/)
   assert.match(evidence[0], /dsml-ok/)
 })
+
+test('subagent adapter exposes the structured turn-end diagnostic for stopReason=error', async () => {
+  const agent = {
+    session: {
+      seq: 3,
+      events: [{
+        type: 'turn/end',
+        seq: 3,
+        data: { reason: { kind: 'error', error: { code: 'UPSTREAM_TIMEOUT', message: 'model gateway timeout' } } },
+      }],
+    },
+  }
+  const ctx = {
+    get(name) {
+      if (name === 'subagents') return {
+        listProviders: () => ['fork'],
+        async start() {
+          return { id: 'child-error', localAgent: agent, result: Promise.resolve({ stopReason: 'error', output: [] }), async dispose() {} }
+        },
+      }
+      if (name === 'agents') return { currentInitiator: () => ({ session: { id: 'parent' } }) }
+      return undefined
+    },
+  }
+  const child = await getSessionForkAdapter(ctx).fork('solve')
+  const output = await child.content
+  assert.match(output, /\[stopReason: error\]/)
+  assert.match(output, /UPSTREAM_TIMEOUT: model gateway timeout/)
+})

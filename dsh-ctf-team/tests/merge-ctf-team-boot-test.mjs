@@ -122,6 +122,9 @@ ok("ctx.dockerSandbox 探测 mock daemon 成功");
 // dsh-ctf-team 的 sandbox_run 工具已注册（tools stub 收到注册）
 const toolNames = [...ctx.tools.defs.keys()];
 assert.ok(toolNames.includes("sandbox_run"), `sandbox_run 工具注册 (got: ${toolNames.join(",")})`);
+const sandboxDefinition = ctx.tools.defs.get("sandbox_run");
+assert.equal(sandboxDefinition.parameters.type, "object", "sandbox_run parameters 使用 JSON Schema object 根节点");
+assert.deepEqual(sandboxDefinition.parameters.required, ["command"], "sandbox_run command 为必填参数");
 ok(`sandbox_run 工具已注册（tools 服务）`);
 
 // 执行链路：tool.execute -> 分享包 sandbox-tool -> docker-stub 适配器 -> ctx.dockerSandbox -> mock daemon
