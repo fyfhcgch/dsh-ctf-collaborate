@@ -11,8 +11,8 @@
 - **多人同步**：默认模式由中心 Host 使用 SSE 广播本机数据库变更；也可以切换为真正的浏览器端 WebRTC/P2P 模式，数据保存在各自浏览器本地，写入通过 DataChannel 在 Peer 之间同步，不依赖中心数据库或 SSE。
 - **可视化面板**：Harness 侧边栏工作区区域提供 `CTF Board` 按钮，不再创建覆盖工作区的悬浮按钮；独立页面 `/ctf-team` 内置 Vue 3 + Element Plus，题目、详情、笔记、Agent、证据全部在同一面板中。
 - **持久化**：默认数据库位于 `$DSH_HOME/ctf-team/ctf-team.db`，Harness 重启或插件重载后数据仍保留。
-- **DASCTF 赛事适配**：固定使用官方 Agent API 路径；同步公告、规则、题目详情、附件、状态和排名；支持人工确认后的靶机启动/回收与 Flag 提交。
-- **赛事安全约束**：模型完整 URL 必须精确命中官方白名单；AccessKey 支持 Web 面板/API 运行时加载或环境变量注入；单 Agent SQLite 租约、赛事时间窗、每题最多 50 次提交、Flag 格式校验、无自动重试和脱敏审计均由后端强制执行。
+- **DASCTF 赛事适配**：固定使用官方 Agent API 路径；同步公告、规则、题目详情、附件、状态和排名；支持在题目详情中人工确认启动/恢复环境、按平台文档自动轮询并同步 endpoint，以及人工确认后的 Flag 提交。
+- **赛事安全约束**：模型完整 URL 填写后必须精确命中官方白名单；AccessKey 支持 Web 面板/API 运行时加载或环境变量注入；平台能力接口按官方 `X-Agent-AccessKey` 调用，Flag 提交保留模型 URL 审计门，单 Agent SQLite 租约、赛事时间窗、每题最多 50 次提交、Flag 格式校验和脱敏审计均由后端强制执行。
 
 ## 安装
 
@@ -67,8 +67,10 @@ curl -X POST http://HOST:3080/ctf-team/api/platform/configure \
 
 4. 使用 `GET /ctf-team/api/platform/status` 检查 AccessKey、Server Host、赛事窗口和模型 URL 白名单状态；使用 `POST /ctf-team/api/platform/clear-credentials` 清除当前进程内的运行时 AccessKey。
 5. 使用 `POST /ctf-team/api/platform/sync` 同步公告、规则、题目详情和排名。同步只读平台；模型 URL 未配置时仍可同步，便于赛前导入题目与公告。
-6. 启动/回收靶机使用 `/platform/exercise/build` 和 `/platform/exercise/recover`，请求必须携带 `confirm=true`、`confirmationText=CONFIRM`；提交使用 `/platform/submit`，必须携带 `confirm=true`、`confirmationText=SUBMIT`。这些写操作需要 AccessKey、赛事窗口、单 Agent 租约、模型 URL 白名单和提交次数策略全部通过。
-7. 赛事结束前使用 `GET /ctf-team/api/platform/report` 导出脱敏报告，报告内容应与队伍解题记录和平台流量保持一致。
+6. 对 `isNeedInit=true` 且 `endpoints=[]` 的题目，先在题目详情上方点击 **启动环境**（或需要时点 **恢复环境**）并确认；插件会按 `api_doc.md` 轮询 `/ctf/exercise`，直到同时满足 `isNeedCheck=false` 且 endpoint 已返回；若平台检查结束但 endpoint 仍为空，会提示手动同步或重试。手动补同步可点 **同步当前题 endpoint**，HTTP 方式可调用 `/platform/exercise/sync`。环境启停只需要 Server Host + AccessKey + 人工确认；请求必须携带 `confirm=true`、`confirmationText=CONFIRM`。
+7. 等题目详情显示 endpoint 后再启动“解出 flag”类 Agent 任务；插件会在 endpoint 为空或 `isNeedCheck=true` 时阻止解题型 Agent fork，并在任务/思考日志中提示先完成环境初始化，避免 Agent 盲查本地源码、扫描本机端口并耗尽 DSML 轮次。
+8. 提交使用 `/platform/submit`，必须携带 `confirm=true`、`confirmationText=SUBMIT`。Flag 提交需要 AccessKey、赛事窗口、单 Agent 租约、模型 URL 白名单和提交次数策略全部通过。
+9. 赛事结束前使用 `GET /ctf-team/api/platform/report` 导出脱敏报告，报告内容应与队伍解题记录和平台流量保持一致。
 
 Flag 只能提交完整的 `DASCTF{...}` 或 `flag{...}`，插件会在发往平台前转换为大括号内部内容。插件不自动爆破、重试或在赛事时间窗外提交。正式初赛前请把 `dasctfEventStartAt`、`dasctfEventEndAt` 改为当届赛事的实际时间；默认值对应当前测试赛。
 
@@ -124,7 +126,7 @@ config:
 - `webMountPath`：Web 面板和 HTTP API 的挂载路径。
 - `enableHttpBridge`：是否启用独立 Web 面板及 SSE。
 - `teamId`：WebRTC/P2P 同步使用的团队标识。
-- `dasctfGatewayEndpoint`：赛事手册中的模型原始完整 URL；空值仍允许只读同步，Flag 提交和靶机启停要求该值命中官方完整 URL 白名单。
+- `dasctfGatewayEndpoint`：赛事手册中的模型原始完整 URL；空值仍允许题目同步、单题 endpoint 同步和靶机启停，Flag 提交要求该值命中官方完整 URL 白名单。
 - `dasctfAccessKeyEnv`：AccessKey 的环境变量名，默认 `DASCTF_ACCESS_KEY`；也可在 Web 面板或 `/platform/configure` 中运行时加载。请勿把真实值写入 profile YAML、SQLite、Git、审计正文或报告。
 - `dasctfEventStartAt` / `dasctfEventEndAt`：赛事操作时间窗，默认是测试赛时间。
 - `dasctfMaxSubmissions`：每题本地提交上限，最大不能超过平台规定的 50 次。
@@ -152,6 +154,7 @@ config:
 - `POST /ctf-team/api/platform/sync`（只读平台同步）
 - `POST /ctf-team/api/platform/exercise/build`（需人工确认）
 - `POST /ctf-team/api/platform/exercise/recover`（需人工确认）
+- `POST /ctf-team/api/platform/exercise/sync`（同步当前题详情与 endpoint）
 - `POST /ctf-team/api/platform/submit`（需人工确认；Flag 只接受 `DASCTF{}` / `flag{}`）
 - `GET /ctf-team/api/platform/audit`
 - `GET /ctf-team/api/platform/report`（Markdown）
@@ -173,7 +176,7 @@ interface CtfTeamSessionFork {
 
 `fork()` 应创建独立 Harness 会话并提交 Prompt；`onMessage()` 用于把运行过程日志实时写入题目黑板，`content` 可以是字符串或最终结果 Promise。插件会在 `agentConcurrentLimit` 内运行任务，并在 SQLite 中保存运行中任务、思考日志和最终结果。
 
-启动 Agent 任务时，插件会自动把当前题目的 ID、标题、分类、结构化 DASCTF 题面、附件路径、共享笔记、最近个人笔记和证据注入专家 Prompt。若子 Agent 返回 DSML `shell`/`bash`/`sh`/`terminal` 调用，Host 适配器会按轮次执行命令、脱敏输出中的 AccessKey/JWT/API Key，并把结果回填给同一个子 Agent 继续总结。默认每轮最多执行 4 条命令、最多 8 轮，每条命令 120 秒超时，单轮输出按 80,000 字符限流；实时 thought 日志会去重并截断超长块，完整最终结果仍写入任务记录。
+启动 Agent 任务时，插件会自动把当前题目的 ID、标题、分类、结构化 DASCTF 题面、附件路径、共享笔记、最近个人笔记和证据注入专家 Prompt，并额外注入平台环境前置规则：如果题目需要初始化且 endpoint 为空或 `isNeedCheck=true`，Agent 应先等待面板启动/恢复环境并轮询同步当前题 endpoint，而不是搜索 Harness 源码或本机端口。后端也会对“解出 flag/solve/exploit”等解题型 Prompt 做前置拦截，直接写入“题目环境尚未就绪”的任务结果。若子 Agent 返回 DSML `shell`/`bash`/`sh`/`terminal` 调用，Host 适配器会按轮次执行命令、脱敏输出中的 AccessKey/JWT/API Key，并把结果回填给同一个子 Agent 继续总结。默认每轮最多执行 4 条命令、最多 8 轮，每条命令 120 秒超时，单轮输出按 80,000 字符限流；实时 thought 日志会去重并截断超长块，完整最终结果仍写入任务记录。
 
 ## 开发
 

@@ -73,6 +73,7 @@ export interface PlatformStatus {
   policy: { maxSubmissionsPerExercise: number; requiresHumanConfirmation: true; automaticRetries: false }
 }
 export interface PlatformSyncResult { stageId: string; notices: number; exercises: number; syncedChallenges: number; score: unknown; rank: unknown }
+export interface PlatformExerciseSyncResult { exerciseId: number; challengeId: string; endpoints: number; isNeedCheck: boolean; synced: boolean }
 
 export class DASCTFPlatform {
   private readonly fetchImpl: typeof fetch
@@ -149,6 +150,32 @@ export class DASCTFPlatform {
     return { stageId: this.config.stageId, notices: arrayLength(notices.data), exercises: groups.reduce((sum, group) => sum + (Array.isArray(group?.corpus) ? group.corpus.length : 0), 0), syncedChallenges, score: overview.data?.stagePoint ?? null, rank: overview.data?.stageRank ?? null }
   }
 
+  async syncExercise(service: TeamService, exerciseId: unknown): Promise<PlatformExerciseSyncResult> {
+    this.ensureConfigured(); this.ensureLease()
+    const id = Number(exerciseId)
+    if (!Number.isInteger(id) || id <= 0) throw new PlatformError('exerciseId must be a positive integer', 'policy')
+    const detail = await this.request('GET', '/ctf/exercise', { exerciseId: id })
+    const safe = redactSecrets(detail.data) as Record<string, any>
+    const challengeId = `dasctf-${id}`
+    const existing = service.listChallenges().find((item) => item.challengeId === challengeId)
+    if (!existing) throw new PlatformError(`challenge ${challengeId} is not synced locally`, 'policy')
+    let noticeInfo: unknown = {}
+    try { noticeInfo = JSON.parse(existing.description)?.noticeInfo ?? {} } catch { /* keep an empty notice block */ }
+    const input = {
+      challengeId,
+      title: String(safe.name ?? existing.title),
+      category: existing.category,
+      description: JSON.stringify({ noticeInfo: redactSecrets(noticeInfo), exercise: safe }, null, 2).slice(0, 20000),
+      attachmentPaths: attachmentUrls(safe),
+      status: safe.hasSolved ? 'solved' : existing.status,
+    } as const
+    service.updateChallenge(challengeId, input)
+    const endpoints = arrayLength(safe.endpoints)
+    const isNeedCheck = safe.isNeedCheck === true
+    this.audit('platform.exercise.sync', { exerciseId: id, endpoints, isNeedCheck })
+    return { exerciseId: id, challengeId, endpoints, isNeedCheck, synced: true }
+  }
+
   async submit(exerciseId: unknown, flag: unknown, confirm: unknown, confirmationText: unknown): Promise<{ accepted: boolean; exerciseId: number; attemptsUsed: number }> {
     this.ensureConfigured(true); this.ensureLease()
     if (confirm !== true || confirmationText !== 'SUBMIT') throw new PlatformError('human confirmation is required: confirm=true and confirmationText=SUBMIT', 'policy')
@@ -211,7 +238,7 @@ export class DASCTFPlatform {
   }
 
   private async changeExerciseEnv(path: '/ctf/build-exercise-env' | '/ctf/recover-exercise-env', exerciseId: unknown, confirm: unknown, confirmationText: unknown): Promise<unknown> {
-    this.ensureConfigured(true); this.ensureLease()
+    this.ensureConfigured(); this.ensureLease()
     if (confirm !== true || confirmationText !== 'CONFIRM') throw new PlatformError('human confirmation is required: confirm=true and confirmationText=CONFIRM', 'policy')
     const id = Number(exerciseId); if (!Number.isInteger(id) || id <= 0) throw new PlatformError('exerciseId must be a positive integer', 'policy')
     if (Date.now() < Date.parse(this.config.eventStartAt) || Date.now() > Date.parse(this.config.eventEndAt)) throw new PlatformError('environment operation is outside the configured event window', 'policy')

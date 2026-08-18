@@ -122,8 +122,73 @@ test('agent runner renders DASCTF exercise JSON into concise task details', asyn
     insertThought() {},
   }
   const runner = setupAgentRunner(db, { emit() {} }, { async fork(prompt) { forkedPrompt = prompt; return { content: 'ok' } } }, 1)
-  await runner.spawn('dasctf-10661', 'alice', '解出flag')
+  await runner.spawn('dasctf-10661', 'alice', '整理题面和平台状态')
   assert.match(forkedPrompt, /题面: 听说你是pop大师/)
   assert.match(forkedPrompt, /需要初始化环境: 是/)
   assert.match(forkedPrompt, /暂无 endpoint/)
+  assert.match(forkedPrompt, /平台环境前置规则/)
+})
+
+test('agent runner stops solve tasks before fork when DASCTF endpoint is not initialized', async () => {
+  let forkCalled = false
+  const tasks = []
+  const thoughts = []
+  const description = JSON.stringify({ exercise: { id: 10664, name: 'UploadKing', description: '你能得到King的认可吗', isNeedInit: true, endpoints: [], attachment: [], endpointType: 'monopoly' } })
+  const db = {
+    getChallenge(id) { return { challengeId: id, title: 'UploadKing', category: 'web', description, attachmentPaths: [], status: 'pending', createdAt: 1 } },
+    insertTask(task) { tasks.push(task) },
+    insertThought(thought) { thoughts.push(thought) },
+  }
+  const runner = setupAgentRunner(db, { emit() {} }, { async fork() { forkCalled = true; return { content: 'unexpected' } } }, 1)
+  const result = await runner.spawn('dasctf-10664', 'alice', '解出web题flag')
+  assert.equal(forkCalled, false)
+  assert.equal(tasks.length, 1)
+  assert.equal(tasks[0].done, true)
+  assert.match(result.response, /题目环境尚未就绪/)
+  assert.match(result.response, /exerciseId: 10664/)
+  assert.match(thoughts[0].content, /同步当前题 endpoint/)
+})
+
+test('agent runner blocks solve tasks while endpoint check is still pending even when an endpoint is present', async () => {
+  let forkCalled = false
+  const tasks = []
+  const thoughts = []
+  const description = JSON.stringify({ exercise: {
+    id: 10664,
+    name: 'UploadKing',
+    description: '你能得到King的认可吗',
+    isNeedInit: true,
+    isNeedCheck: true,
+    endpoints: [{ exposeIps: ['1.2.3.4'], ports: ['80'] }],
+    attachment: [],
+    endpointType: 'monopoly',
+  } })
+  const db = {
+    getChallenge() { return { challengeId: 'dasctf-10664', title: 'UploadKing', category: 'web', description, attachmentPaths: [], status: 'pending', createdAt: 1 } },
+    insertTask(task) { tasks.push(task) },
+    insertThought(thought) { thoughts.push(thought) },
+  }
+  const runner = setupAgentRunner(db, { emit() {} }, { async fork() { forkCalled = true; return { content: 'unexpected' } } }, 1)
+  const result = await runner.spawn('dasctf-10664', 'alice', '解出web题flag')
+  assert.equal(forkCalled, false)
+  assert.equal(tasks.length, 1)
+  assert.equal(tasks[0].done, true)
+  assert.match(result.response, /环境尚未准备完成/)
+  assert.match(thoughts[0].content, /同步当前题 endpoint/)
+
+  // A blocked preflight must not consume the only concurrency slot.
+  const readyDescription = JSON.stringify({ exercise: {
+    id: 10664,
+    name: 'UploadKing',
+    description: 'ready',
+    isNeedInit: true,
+    isNeedCheck: false,
+    endpoints: [{ exposeIps: ['1.2.3.4'], ports: ['80'] }],
+    attachment: [],
+    endpointType: 'monopoly',
+  } })
+  db.getChallenge = () => ({ challengeId: 'dasctf-10664', title: 'UploadKing', category: 'web', description: readyDescription, attachmentPaths: [], status: 'pending', createdAt: 1 })
+  const followUp = await runner.spawn('dasctf-10664', 'alice', '只整理当前 endpoint')
+  assert.equal(forkCalled, true)
+  assert.equal(followUp.response, 'unexpected')
 })

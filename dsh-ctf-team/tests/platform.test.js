@@ -118,7 +118,7 @@ test('environment lifecycle is explicit and restricted to documented API paths',
 })
 
 
-test('read-only sync works without a model gateway, while write operations require one', async () => {
+test('platform capability APIs work with AccessKey only while flag submission keeps gateway audit gate', async () => {
   const f = fixture(async (url, init) => {
     const path = new URL(url).pathname
     if (path.endsWith('/match-info')) return response({})
@@ -131,8 +131,27 @@ test('read-only sync works without a model gateway, while write operations requi
     const platform = new DASCTFPlatform(f.db, config({ gatewayEndpoint: '' }), f.platform.fetchImpl)
     const sync = await platform.sync(f.service)
     assert.equal(sync.exercises, 0)
+    await platform.buildExerciseEnv(1001, true, 'CONFIRM')
+    await platform.recoverExerciseEnv(1001, true, 'CONFIRM')
     await assert.rejects(() => platform.submit(1001, 'DASCTF{one}', true, 'SUBMIT'), /gatewayEndpoint/)
-    await assert.rejects(() => platform.buildExerciseEnv(1001, true, 'CONFIRM'), /gatewayEndpoint/)
+  } finally { f.db.close(); f.restore(); rmSync(f.directory, { recursive: true, force: true }) }
+})
+
+
+test('single exercise sync refreshes endpoint readiness after async environment start', async () => {
+  const f = fixture(async (url) => {
+    const path = new URL(url).pathname
+    if (path.endsWith('/ctf/exercise')) return response({ id: 1001, name: 'UploadKing', description: 'safe', hasSolved: false, isNeedInit: true, isNeedCheck: false, endpointType: 'monopoly', attachment: [], endpoints: [{ exposeIps: ['10.0.0.10'], ports: ['80'], users: [{ username: 'root', password: 'secret' }] }] })
+    return response({ ok: true })
+  })
+  try {
+    f.service.createChallenge({ challengeId: 'dasctf-1001', title: 'UploadKing', category: 'web', description: JSON.stringify({ noticeInfo: { note: 'rules' }, exercise: { id: 1001, name: 'UploadKing', isNeedInit: true, isNeedCheck: true, endpoints: [] } }), attachmentPaths: [], status: 'pending' })
+    const result = await f.platform.syncExercise(f.service, 1001)
+    assert.deepEqual(result, { exerciseId: 1001, challengeId: 'dasctf-1001', endpoints: 1, isNeedCheck: false, synced: true })
+    const challenge = f.service.listChallenges().find((item) => item.challengeId === 'dasctf-1001')
+    assert.match(challenge.description, /monopoly/)
+    assert.match(challenge.description, /REDACTED/)
+    assert.doesNotMatch(challenge.description, /secret/)
   } finally { f.db.close(); f.restore(); rmSync(f.directory, { recursive: true, force: true }) }
 })
 

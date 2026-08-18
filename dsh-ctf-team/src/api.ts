@@ -111,6 +111,13 @@ export function setupApi(ctx: any, mountPath: string, broadcast: Broadcaster, se
       res.json({ ok: true, result: await platform.recoverExerciseEnv(body.exerciseId, body.confirm, body.confirmationText) })
     } catch (error) { sendError(res, error) }
   })
+  server.post(`${api}/platform/exercise/sync`, async (req, res) => {
+    try {
+      if (!platform) throw new TeamInputError('DASCTF platform adapter is disabled', 'unsupported')
+      const body = bodyOf(req.body)
+      res.json({ ok: true, result: await platform.syncExercise(service, body.exerciseId) })
+    } catch (error) { sendError(res, error) }
+  })
   server.get(`${api}/challenges`, (_req, res) => res.json(service.listChallenges()))
   server.get(`${api}/challenges/:cid`, (req, res) => {
     try { res.json(service.getDetail(req.params.cid)) } catch (error) { sendError(res, error) }

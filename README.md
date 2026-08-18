@@ -10,7 +10,7 @@ DeepSeek Harness 的 CTF 协作插件集合。仓库当前只保留 `dsh-ctf-tea
 - 通过 SSE 刷新同一 Harness Host 上的协作页面，并支持 WebRTC/P2P 操作同步。
 - 提供 Harness 侧边栏入口和独立的 `/ctf-team` Web 面板。
 - 提供 blackboard、planner、crypto/misc/web 专家、verifier、submit-gateway 和 Docker sandbox 八个协作插件。
-- 内置西湖论剑 AI Agent 赛事适配：平台只读同步、Web/API 运行时填写 Server Host 与 AccessKey、官方模型完整 URL 白名单、单 Agent 租约、提交次数/时间/格式保护和脱敏审计报告。
+- 内置西湖论剑 AI Agent 赛事适配：平台只读同步、Web/API 运行时填写 Server Host 与 AccessKey、官方模型完整 URL 白名单、题目环境启动/恢复/endpoint 自动轮询同步、Agent 运行前置检查、单 Agent 租约、提交次数/时间/格式保护和脱敏审计报告。
 
 ## 环境要求
 
@@ -114,7 +114,7 @@ config:
 
 更多配置项、使用流程、Agent Host 适配器和 HTTP/SSE 接口，请参阅 [`dsh-ctf-team/README.md`](dsh-ctf-team/README.md)。
 
-赛事调试时可在 `/ctf-team` 顶部面板或 `POST /ctf-team/api/platform/configure` 填写 Server Host 与 AccessKey，也可用进程环境变量 `DASCTF_ACCESS_KEY` 注入；AccessKey 只用于平台比赛能力接口，与模型网关鉴权分离。请勿把 AccessKey、登录 JWT 或模型 API Key 写入仓库。平台适配器默认不自动同步、不自动启停靶机、不自动提交，也不自动重试。
+赛事调试时可在 `/ctf-team` 顶部面板或 `POST /ctf-team/api/platform/configure` 填写 Server Host 与 AccessKey，也可用进程环境变量 `DASCTF_ACCESS_KEY` 注入；AccessKey 只用于平台比赛能力接口，与模型网关鉴权分离。请勿把 AccessKey、登录 JWT 或模型 API Key 写入仓库。平台适配器默认不自动全量同步、不自动启停靶机、不自动提交，也不自动重试；对 `isNeedInit=true` 且 endpoint 为空或 `isNeedCheck=true` 的题目，先在题目详情点击“启动环境/恢复环境”，插件会自动轮询当前题 endpoint，直到 endpoint 已返回且检查完成后再启动解题型 Agent。
 
 ## 当前限制
 

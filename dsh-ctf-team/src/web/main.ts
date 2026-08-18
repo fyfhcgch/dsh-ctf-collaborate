@@ -14,6 +14,7 @@ interface Evidence { id: string; challengeId: string; type: EvidenceType; conten
 interface Task { taskId: string; challengeId: string; ownerUserId: string; expertType: 'general' | 'pwn' | 'reverse'; prompt: string; done: boolean; result: string; createdAt: number }
 interface Detail { challenge: Challenge; sharedNote: SharedNote | null; notes: Note[]; thoughts: Thought[]; evidence: Evidence[]; tasks: Task[] }
 interface PlatformStatus { enabled: boolean; competitionId?: string; stageId?: string; platformHost?: string; accessKeyConfigured?: boolean; gatewayEndpointConfigured?: boolean; gatewayEndpointAllowed?: boolean; event?: { startAt: string; endAt: string; active: boolean }; policy?: { maxSubmissionsPerExercise: number; requiresHumanConfirmation: boolean; automaticRetries: boolean } }
+interface ExerciseInfo { id?: number; name?: string; isNeedInit: boolean; isNeedCheck: boolean; canRefreshEndpoint: boolean; endpointType?: string; endpoints: unknown[]; attachment: unknown[] }
 
 const base = (document.querySelector('meta[name="ctf-team-base"]')?.getAttribute('content') || location.pathname).replace(/\/$/, '')
 const apiUrl = (path: string) => `${base}/api${path}`
@@ -30,6 +31,25 @@ const categoryLabel: Record<Category, string> = { web: 'Web', pwn: 'Pwn', crypto
 const statusLabel: Record<Status, string> = { pending: '待解', solving: '正在解', solved: '已解出' }
 const evidenceLabel: Record<EvidenceType, string> = { tool_output: '工具输出', file_extract: '文件提取', log: '命令日志' }
 
+const parseExerciseInfo = (challenge?: Challenge | null): ExerciseInfo | null => {
+  if (!challenge?.description) return null
+  try {
+    const exercise = (JSON.parse(challenge.description) as { exercise?: Record<string, unknown> }).exercise
+    if (!exercise || typeof exercise !== 'object') return null
+    return {
+      id: Number.isInteger(exercise.id) ? exercise.id as number : undefined,
+      name: typeof exercise.name === 'string' ? exercise.name : undefined,
+      isNeedInit: Boolean(exercise.isNeedInit),
+      isNeedCheck: Boolean(exercise.isNeedCheck),
+      canRefreshEndpoint: Boolean(exercise.canRefreshEndpoint),
+      endpointType: typeof exercise.endpointType === 'string' ? exercise.endpointType : undefined,
+      endpoints: Array.isArray(exercise.endpoints) ? exercise.endpoints : [],
+      attachment: Array.isArray(exercise.attachment) ? exercise.attachment : [],
+    }
+  } catch { return null }
+}
+const endpointLabel = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value)
+
 const app = createApp({
   setup() {
     const state = reactive({
@@ -43,6 +63,11 @@ const app = createApp({
     })
     const counts = computed(() => state.challenges.reduce((result: Record<Status, number>, challenge: Challenge) => { result[challenge.status] += 1; return result }, { pending: 0, solving: 0, solved: 0 } as Record<Status, number>))
     const selected = computed(() => state.detail?.challenge ?? state.challenges.find((item: Challenge) => item.challengeId === state.selectedId) ?? null)
+    const selectedExercise = computed(() => parseExerciseInfo(selected.value))
+    const environmentBlocked = computed(() => Boolean(
+      selectedExercise.value?.isNeedInit &&
+      (selectedExercise.value.endpoints.length === 0 || selectedExercise.value.isNeedCheck)
+    ))
     const attachmentText = (paths: string[]) => paths.join('\n')
     const splitAttachments = (value: string) => value.split(/\r?\n/).map(item => item.trim()).filter(Boolean)
     const copyChallengeToEdit = (challenge: Challenge) => Object.assign(state.edit, { title: challenge.title, category: challenge.category, status: challenge.status, description: challenge.description, attachments: attachmentText(challenge.attachmentPaths), flag: challenge.flag || '' })
@@ -83,6 +108,44 @@ const app = createApp({
         await Promise.all([load(true), loadPlatformStatus()])
       } catch (error) { notifyError(error) } finally { state.platform.loading = false }
     }
+    const syncExerciseEndpoint = async (silent = false) => {
+      const exercise = selectedExercise.value
+      if (!exercise?.id) throw new Error('当前题目没有平台 exerciseId')
+      const result = await post('/platform/exercise/sync', { exerciseId: exercise.id }) as { result: { endpoints: number; isNeedCheck: boolean } }
+      await load(true)
+      if (!silent) notify(`题目 endpoint 已同步：${result.result.endpoints} 个${result.result.isNeedCheck ? '（平台仍在准备）' : ''}`)
+      return result.result
+    }
+    const syncCurrentExercise = async () => {
+      state.platform.loading = true
+      try { await syncExerciseEndpoint(false) } catch (error) { notifyError(error) } finally { state.platform.loading = false }
+    }
+    const wait = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms))
+    const changeExerciseEnv = async (action: 'build' | 'recover') => {
+      const exercise = selectedExercise.value
+      if (!exercise?.id) { notifyError(new Error('当前题目没有平台 exerciseId')); return }
+      const actionText = action === 'build' ? '启动环境' : '恢复环境'
+      try {
+        await ElMessageBox.confirm(`将对 ${selected.value?.title || exercise.name || exercise.id} 执行“${actionText}”。平台会记录该操作；确认后插件会按平台文档轮询题目详情获取 endpoint。`, `确认${actionText}`, { type: 'warning', confirmButtonText: actionText, cancelButtonText: '取消' })
+        state.platform.loading = true
+        await post(`/platform/exercise/${action}`, { exerciseId: exercise.id, confirm: true, confirmationText: 'CONFIRM' })
+        let result: { endpoints: number; isNeedCheck: boolean } = { endpoints: 0, isNeedCheck: true }
+        const attempts = action === 'build' ? 20 : 1
+        let ready = false
+        for (let index = 0; index < attempts; index++) {
+          await wait(index === 0 ? 800 : 2500)
+          result = await syncExerciseEndpoint(true)
+          if (result.endpoints > 0 && !result.isNeedCheck) { ready = true; break }
+          if (!result.isNeedCheck) break
+        }
+        if (ready) notify(`${actionText}完成，已获取 ${result.endpoints} 个 endpoint`)
+        else if (result.isNeedCheck) notify(`${actionText}请求已发送，平台仍在准备环境${result.endpoints ? `（当前已有 ${result.endpoints} 个 endpoint）` : ''}；稍后点击“同步当前题 endpoint”继续轮询`)
+        else notify(`${actionText}请求已完成，但平台暂未返回 endpoint，请检查题目状态或重试`)
+      } catch (error) { if (error !== 'cancel' && error !== 'close') notifyError(error) }
+      finally { state.platform.loading = false }
+    }
+    const buildExerciseEnv = () => changeExerciseEnv('build')
+    const recoverExerciseEnv = () => changeExerciseEnv('recover')
     const load = async (keepSelection = true) => {
       state.loading = true
       try {
@@ -141,6 +204,7 @@ const app = createApp({
     }
     const startTask = async () => {
       if (!state.selectedId) return
+      if (environmentBlocked.value) { notifyError(new Error('当前题目环境仍在准备中，请等 endpoint 出现且检查完成后再启动 Agent')); return }
       try { await post('/agent/spawn', { challengeId: state.selectedId, ownerUserId: state.task.ownerUserId || undefined, expertType: state.task.expertType, prompt: state.task.prompt }); state.task.prompt = ''; notify('Agent 任务已提交，日志会实时显示在黑板'); await load(true) }
       catch (error) { notifyError(error) }
     }
@@ -155,7 +219,7 @@ const app = createApp({
       timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load(true) }, 15000)
     })
     onBeforeUnmount(() => { if (timer !== undefined) window.clearInterval(timer); state.eventSource?.close() })
-    return { state, counts, selected, categoryLabel, statusLabel, evidenceLabel, formatTime, load, selectChallenge, createChallenge, updateChallenge, deleteChallenge, saveSharedNote, addEvidence, startTask, switchTab, saveMember, apiUrl, loadPlatformStatus, configurePlatform, clearPlatformCredentials, syncPlatform }
+    return { state, counts, selected, selectedExercise, environmentBlocked, categoryLabel, statusLabel, evidenceLabel, formatTime, endpointLabel, load, selectChallenge, createChallenge, updateChallenge, deleteChallenge, saveSharedNote, addEvidence, startTask, switchTab, saveMember, apiUrl, loadPlatformStatus, configurePlatform, clearPlatformCredentials, syncPlatform, syncCurrentExercise, buildExerciseEnv, recoverExerciseEnv }
   },
   template: `
   <el-container class="ctf-app">
@@ -186,12 +250,14 @@ const app = createApp({
       </el-card>
       <el-card class="challenge-detail" shadow="never" v-if="selected">
         <div class="detail-heading"><div><h2>{{ selected.title }}</h2><code>{{ selected.challengeId }}</code></div><el-button type="danger" plain @click="deleteChallenge">删除题目</el-button></div>
+        <el-alert v-if="environmentBlocked" title="当前题目环境仍未准备完成：需要等平台检查完成且返回 endpoint，Agent 才能开始解题。" type="warning" show-icon :closable="false" class="env-alert" />
+        <div v-if="selectedExercise" class="exercise-box"><div class="exercise-meta"><el-tag :type="selectedExercise.isNeedInit ? 'warning' : 'info'">{{ selectedExercise.isNeedInit ? '需初始化环境' : '无需初始化' }}</el-tag><el-tag>exerciseId {{ selectedExercise.id || '-' }}</el-tag><el-tag>{{ selectedExercise.endpointType || 'endpoint' }}</el-tag><el-tag :type="selectedExercise.isNeedCheck ? 'warning' : 'info'">{{ selectedExercise.isNeedCheck ? '环境准备中' : '检查完成' }}</el-tag><el-tag :type="selectedExercise.endpoints.length ? 'success' : 'danger'">endpoint {{ selectedExercise.endpoints.length }}</el-tag></div><div v-if="selectedExercise.endpoints.length" class="endpoint-list"><code v-for="endpoint in selectedExercise.endpoints" :key="endpointLabel(endpoint)">{{ endpointLabel(endpoint) }}</code></div><div class="platform-actions"><el-button type="primary" plain @click="buildExerciseEnv" :loading="state.platform.loading" :disabled="!selectedExercise.id">启动环境</el-button><el-button plain @click="recoverExerciseEnv" :loading="state.platform.loading" :disabled="!selectedExercise.id">恢复环境</el-button><el-button type="success" plain @click="syncCurrentExercise" :loading="state.platform.loading" :disabled="!selectedExercise.id">同步当前题 endpoint</el-button></div></div>
         <el-tabs v-model="state.tab" @tab-change="switchTab">
           <el-tab-pane label="题目详情" name="overview"><el-form label-position="top" @submit.prevent="updateChallenge"><el-form-item label="题目名称"><el-input v-model="state.edit.title" /></el-form-item><div class="form-grid"><el-form-item label="分类"><el-select v-model="state.edit.category"><el-option v-for="(label,key) in categoryLabel" :key="key" :label="label" :value="key" /></el-select></el-form-item><el-form-item label="状态"><el-select v-model="state.edit.status"><el-option v-for="(label,key) in statusLabel" :key="key" :label="label" :value="key" /></el-select></el-form-item></div><el-form-item label="描述"><el-input v-model="state.edit.description" type="textarea" :rows="5" /></el-form-item><el-form-item label="附件路径"><el-input v-model="state.edit.attachments" type="textarea" :rows="3" /></el-form-item><el-form-item label="Flag"><el-input v-model="state.edit.flag" show-password /></el-form-item><el-button type="primary" native-type="submit" :loading="state.saving">保存修改</el-button></el-form></el-tab-pane>
           <el-tab-pane label="共享笔记" name="notes"><el-alert title="这是每道题唯一的一份共享正文：所有队员都能编辑和查看，保存后其他浏览器通过 SSE 自动刷新。" type="info" :closable="false" /><el-alert v-if="state.sharedNoteDirty" title="你正在编辑尚未保存的本地内容；其他队员的更新会在你保存或放弃编辑后显示。" type="warning" :closable="false" class="shared-note-warning" /><el-form label-position="top" @submit.prevent="saveSharedNote" class="shared-note-form"><el-form-item label="解题思路 / 踩坑记录 / 备忘"><el-input v-model="state.sharedNote.content" @input="state.sharedNoteDirty = true" type="textarea" :rows="18" placeholder="全队共同维护这份笔记……" /></el-form-item><div class="shared-note-meta"><span v-if="state.detail?.sharedNote">最后编辑：{{ state.detail.sharedNote.updatedBy }} · {{ formatTime(state.detail.sharedNote.updatedAt) }}</span><span v-else>尚未保存</span><el-button type="primary" native-type="submit" :loading="state.saving">保存共享笔记</el-button></div></el-form></el-tab-pane>
           <el-tab-pane label="证据库" name="evidence"><div v-for="item in state.detail?.evidence" :key="item.id" class="record-card"><div><el-tag>{{ evidenceLabel[item.type] }}</el-tag><small>{{ formatTime(item.createdAt) }}</small></div><pre>{{ item.content }}</pre></div><el-empty v-if="!state.detail?.evidence.length" description="暂无证据" /><el-form label-position="top" @submit.prevent="addEvidence"><el-form-item label="类型"><el-select v-model="state.evidence.type"><el-option v-for="(label,key) in evidenceLabel" :key="key" :label="label" :value="key" /></el-select></el-form-item><el-form-item label="工具输出 / 文件提取结果 / 命令日志"><el-input v-model="state.evidence.content" type="textarea" :rows="6" /></el-form-item><el-button type="primary" native-type="submit">归档证据</el-button></el-form></el-tab-pane>
           <el-tab-pane label="Agent 日志" name="thoughts"><div v-for="item in state.detail?.thoughts" :key="item.id" class="record-card"><div><el-tag type="warning">{{ item.source }}</el-tag><small>{{ formatTime(item.createdAt) }}</small></div><p class="content">{{ item.content }}</p></div><el-empty v-if="!state.detail?.thoughts.length" description="Agent 运行日志会显示在这里" /></el-tab-pane>
-          <el-tab-pane label="Agent 任务" name="tasks"><div v-for="item in state.detail?.tasks" :key="item.taskId" class="record-card"><div><el-tag :type="item.done ? 'success' : 'warning'">{{ item.done ? '已完成' : '运行中' }}</el-tag><small>{{ item.ownerUserId }} · {{ item.expertType }} · {{ formatTime(item.createdAt) }}</small></div><p><b>Prompt：</b>{{ item.prompt }}</p><pre v-if="item.result">{{ item.result }}</pre></div><el-empty v-if="!state.detail?.tasks.length" description="暂无 Agent 任务" /><el-form label-position="top" @submit.prevent="startTask"><el-form-item label="Owner"><el-input v-model="state.task.ownerUserId" placeholder="默认使用当前队员标识" /></el-form-item><el-form-item label="专家方向"><el-select v-model="state.task.expertType"><el-option label="通用" value="general" /><el-option label="Pwn" value="pwn" /><el-option label="Reverse" value="reverse" /></el-select></el-form-item><el-form-item label="任务 Prompt"><el-input v-model="state.task.prompt" type="textarea" :rows="6" placeholder="例如：审计该题附件中的源码，给出漏洞链和验证步骤" /></el-form-item><el-button type="primary" native-type="submit">启动 Agent 任务</el-button></el-form></el-tab-pane>
+          <el-tab-pane label="Agent 任务" name="tasks"><el-alert v-if="environmentBlocked" title="请先等上方环境检查完成并同步 endpoint，避免 Agent 盲查本地仓库或本机端口。" type="warning" show-icon :closable="false" class="env-alert" /><div v-for="item in state.detail?.tasks" :key="item.taskId" class="record-card"><div><el-tag :type="item.done ? 'success' : 'warning'">{{ item.done ? '已完成' : '运行中' }}</el-tag><small>{{ item.ownerUserId }} · {{ item.expertType }} · {{ formatTime(item.createdAt) }}</small></div><p><b>Prompt：</b>{{ item.prompt }}</p><pre v-if="item.result">{{ item.result }}</pre></div><el-empty v-if="!state.detail?.tasks.length" description="暂无 Agent 任务" /><el-form label-position="top" @submit.prevent="startTask"><el-form-item label="Owner"><el-input v-model="state.task.ownerUserId" placeholder="默认使用当前队员标识" /></el-form-item><el-form-item label="专家方向"><el-select v-model="state.task.expertType"><el-option label="通用" value="general" /><el-option label="Pwn" value="pwn" /><el-option label="Reverse" value="reverse" /></el-select></el-form-item><el-form-item label="任务 Prompt"><el-input v-model="state.task.prompt" type="textarea" :rows="6" placeholder="例如：审计该题附件中的源码，给出漏洞链和验证步骤" /></el-form-item><el-button type="primary" native-type="submit" :disabled="environmentBlocked">{{ environmentBlocked ? '等待环境准备完成' : '启动 Agent 任务' }}</el-button></el-form></el-tab-pane>
         </el-tabs>
       </el-card>
       <el-card v-else class="challenge-detail" shadow="never"><el-empty description="从左侧添加或选择一道题目" /></el-card>
