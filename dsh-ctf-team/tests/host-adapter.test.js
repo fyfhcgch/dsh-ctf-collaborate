@@ -29,3 +29,49 @@ test('explicit ctfTeamSessionFork takes precedence over ctx.session', async () =
   const adapter = getSessionForkAdapter(ctx)
   assert.equal(await (await adapter.fork('x')).content, 'explicit')
 })
+
+test('subagent adapter executes DSML shell fallback and continues the child', async () => {
+  const followups = []
+  const agent = {
+    session: { seq: 10, events: [] },
+    followup(message) {
+      followups.push(message.content[0].text)
+      this.session.seq = 20
+      this.session.events.push({
+        type: 'assistant/message',
+        seq: 20,
+        data: { message: { content: [{ type: 'text', text: 'continued after tool output' }] } },
+      })
+    },
+    async whenIdle() {},
+  }
+  const ctx = {
+    get(name) {
+      if (name === 'subagents') return {
+        listProviders: () => ['fork'],
+        async start() {
+          return {
+            id: 'child-1',
+            localAgent: agent,
+            result: Promise.resolve({
+              stopReason: 'completed',
+              output: [{ type: 'text', text: '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="shell">\n<｜｜DSML｜｜parameter name="command" string="true">printf dsml-ok</｜｜DSML｜｜parameter>\n<｜｜DSML｜｜parameter name="description" string="true">probe</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>' }],
+            }),
+            async dispose() {},
+          }
+        },
+      }
+      if (name === 'agents') return { currentInitiator: () => ({ session: { id: 'parent' }, ctx: {} }) }
+      return undefined
+    },
+    on() { return () => {} },
+  }
+  const adapter = getSessionForkAdapter(ctx)
+  const child = await adapter.fork('solve')
+  const output = await child.content
+  assert.match(output, /printf dsml-ok/)
+  assert.match(output, /dsml-ok/)
+  assert.match(output, /continued after tool output/)
+  assert.equal(followups.length, 1)
+  assert.match(followups[0], /dsml-ok/)
+})

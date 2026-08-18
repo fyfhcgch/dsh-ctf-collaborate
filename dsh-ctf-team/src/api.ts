@@ -3,6 +3,8 @@ import { TeamInputError, TeamNotFoundError } from './types.js'
 import type { AddEvidenceInput, AddNoteInput, AddThoughtInput, CreateChallengeInput, TeamService, UpdateChallengeInput, UpdateSharedNoteInput } from './team-service.js'
 import { getHttpServer } from './host-adapter.js'
 import { renderWebUi, webAsset } from './web-ui.js'
+import type { DASCTFPlatform } from './dasctf-platform.js'
+import { PlatformError } from './dasctf-platform.js'
 
 const bodyOf = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' ? value as Record<string, unknown> : {}
 
@@ -12,11 +14,15 @@ function sendError(res: { status(code: number): { json(value: unknown): void } }
     const status = error.kind === 'conflict' ? 409 : error.kind === 'unsupported' ? 501 : 400
     return res.status(status).json({ error: error.message })
   }
+  if (error instanceof PlatformError) {
+    const status = error.kind === 'auth' ? 401 : error.kind === 'config' || error.kind === 'policy' ? 400 : 502
+    return res.status(status).json({ error: error.message })
+  }
   res.status(500).json({ error: error instanceof Error ? error.message : String(error) })
 }
 
 /** Mount the built-in Web UI, JSON API, and SSE stream over the shared TeamService. */
-export function setupApi(ctx: any, mountPath: string, broadcast: Broadcaster, service: TeamService) {
+export function setupApi(ctx: any, mountPath: string, broadcast: Broadcaster, service: TeamService, platform?: DASCTFPlatform) {
   const server = getHttpServer(ctx)
   if (!server) {
     ctx.logger?.warn?.('dsh-ctf-team: no compatible HTTP server; HTTP bridge was not mounted')
@@ -56,7 +62,55 @@ export function setupApi(ctx: any, mountPath: string, broadcast: Broadcaster, se
     ok: true,
     sseClients: broadcast.clientCount(),
     challengeCount: service.listChallenges().length,
+    platform: platform?.status() ?? null,
   }))
+  server.get(`${api}/platform/status`, (_req, res) => res.json(platform ? platform.status() : { enabled: false }))
+  server.post(`${api}/platform/configure`, (req, res) => {
+    try {
+      if (!platform) throw new TeamInputError('DASCTF platform adapter is disabled', 'unsupported')
+      res.json({ ok: true, platform: platform.configure(bodyOf(req.body) as { serverHost: unknown; accessKey: unknown; gatewayEndpoint?: unknown }) })
+    } catch (error) { sendError(res, error) }
+  })
+  server.post(`${api}/platform/clear-credentials`, (_req, res) => {
+    try {
+      if (!platform) throw new TeamInputError('DASCTF platform adapter is disabled', 'unsupported')
+      res.json({ ok: true, platform: platform.clearRuntimeAccessKey() })
+    } catch (error) { sendError(res, error) }
+  })
+  server.get(`${api}/platform/audit`, (_req, res) => res.json({ entries: service.platformAudit() }))
+  server.get(`${api}/platform/report`, (_req, res) => {
+    if (!platform) return res.status(404).json({ error: 'DASCTF platform adapter is disabled' })
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+    res.write(platform.report(service))
+    res.end()
+  })
+  server.post(`${api}/platform/sync`, async (_req, res) => {
+    try {
+      if (!platform) throw new TeamInputError('DASCTF platform adapter is disabled', 'unsupported')
+      res.json({ ok: true, sync: await platform.sync(service) })
+    } catch (error) { sendError(res, error) }
+  })
+  server.post(`${api}/platform/submit`, async (req, res) => {
+    try {
+      if (!platform) throw new TeamInputError('DASCTF platform adapter is disabled', 'unsupported')
+      const body = bodyOf(req.body)
+      res.json({ ok: true, submission: await platform.submit(body.exerciseId, body.flag, body.confirm, body.confirmationText) })
+    } catch (error) { sendError(res, error) }
+  })
+  server.post(`${api}/platform/exercise/build`, async (req, res) => {
+    try {
+      if (!platform) throw new TeamInputError('DASCTF platform adapter is disabled', 'unsupported')
+      const body = bodyOf(req.body)
+      res.json({ ok: true, result: await platform.buildExerciseEnv(body.exerciseId, body.confirm, body.confirmationText) })
+    } catch (error) { sendError(res, error) }
+  })
+  server.post(`${api}/platform/exercise/recover`, async (req, res) => {
+    try {
+      if (!platform) throw new TeamInputError('DASCTF platform adapter is disabled', 'unsupported')
+      const body = bodyOf(req.body)
+      res.json({ ok: true, result: await platform.recoverExerciseEnv(body.exerciseId, body.confirm, body.confirmationText) })
+    } catch (error) { sendError(res, error) }
+  })
   server.get(`${api}/challenges`, (_req, res) => res.json(service.listChallenges()))
   server.get(`${api}/challenges/:cid`, (req, res) => {
     try { res.json(service.getDetail(req.params.cid)) } catch (error) { sendError(res, error) }

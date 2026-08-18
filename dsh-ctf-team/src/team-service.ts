@@ -12,6 +12,7 @@ import type {
   SharedNote,
   TeamOperation,
   TeamOperationKind,
+  PlatformAuditEntry,
 } from './types.js'
 import { TeamInputError, TeamNotFoundError } from './types.js'
 import type { AgentRunner } from './agent-runner.js'
@@ -71,6 +72,7 @@ export class TeamService {
   ) {}
 
   listChallenges(): Challenge[] { return this.db.listChallenges() }
+  platformAudit(): PlatformAuditEntry[] { return this.db.listPlatformAudit(1000) }
 
   getDetail(challengeId: unknown): ChallengeDetail {
     const id = requireId(challengeId, 'challengeId')

@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { dirname, resolve } from 'node:path'
 import { mkdirSync } from 'node:fs'
-import type { AgentThought, Challenge, EvidenceItem, SubTask, TeamDb, TeamNote, SharedNote, TeamOperation, SyncBatch, TeamVersion } from './types.js'
+import type { AgentThought, Challenge, EvidenceItem, SubTask, TeamDb, TeamNote, SharedNote, TeamOperation, SyncBatch, TeamVersion, PlatformAuditEntry, AgentLease } from './types.js'
 
 function parseAttachmentPaths(value: unknown): string[] {
   if (typeof value !== 'string') return []
@@ -13,7 +13,7 @@ function parseAttachmentPaths(value: unknown): string[] {
   }
 }
 
-export const TEAM_SCHEMA_VERSION = 4
+export const TEAM_SCHEMA_VERSION = 5
 
 const parseChallenge = (row: any): Challenge => ({
   challengeId: String(row.challengeId),
@@ -104,6 +104,19 @@ export function createDb(dbPath: string): TeamDb {
       opId TEXT NOT NULL,
       PRIMARY KEY (scope, entityId)
     );
+    CREATE TABLE IF NOT EXISTS platform_audit (
+      id TEXT PRIMARY KEY,
+      event TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      createdAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS platform_audit_created ON platform_audit (createdAt, id);
+    CREATE TABLE IF NOT EXISTS agent_leases (
+      scope TEXT PRIMARY KEY,
+      ownerId TEXT NOT NULL,
+      acquiredAt INTEGER NOT NULL,
+      expiresAt INTEGER NOT NULL
+    );
   `)
   const schemaRow = db.prepare('SELECT version FROM team_schema LIMIT 1').get() as { version?: number } | undefined
   const taskColumns = db.prepare('PRAGMA table_info(subtasks)').all() as Array<{ name?: string }>
@@ -112,8 +125,8 @@ export function createDb(dbPath: string): TeamDb {
   }
   if (!schemaRow) {
     db.prepare('INSERT INTO team_schema (version) VALUES (?)').run(TEAM_SCHEMA_VERSION)
-  } else if ([1, 2, 3].includes(Number(schemaRow.version))) {
-    // Version 2 added the operation log, version 3 shared notes, and version 4 specialist tasks.
+  } else if ([1, 2, 3, 4].includes(Number(schemaRow.version))) {
+    // Version 2 added the operation log, version 3 shared notes, version 4 specialist tasks, and version 5 platform state.
     db.prepare('UPDATE team_schema SET version=?').run(TEAM_SCHEMA_VERSION)
   } else if (Number(schemaRow.version) !== TEAM_SCHEMA_VERSION) {
     throw new Error(`Unsupported team database schema version: ${String(schemaRow.version)}`)
@@ -189,6 +202,34 @@ export function createDb(dbPath: string): TeamDb {
     setVersion: (scope, entityId, version) => {
       ensureOpen()
       db.prepare('INSERT INTO team_versions (scope,entityId,createdAt,opId) VALUES (?,?,?,?) ON CONFLICT(scope,entityId) DO UPDATE SET createdAt=excluded.createdAt,opId=excluded.opId').run(scope, entityId, version.createdAt, version.opId)
+    },
+    appendPlatformAudit: (entry: PlatformAuditEntry) => {
+      ensureOpen()
+      db.prepare('INSERT INTO platform_audit (id,event,detail,createdAt) VALUES (:id,:event,:detail,:createdAt)').run({ ...entry, detail: JSON.stringify(entry.detail) })
+    },
+    listPlatformAudit: (limit: number) => {
+      ensureOpen()
+      const rows = all('SELECT id,event,detail,createdAt FROM platform_audit ORDER BY createdAt,id LIMIT ?', Math.max(1, Math.min(5000, Math.floor(limit || 100))))
+      return rows.flatMap((row) => { try { return [{ id: String(row.id), event: String(row.event), detail: JSON.parse(String(row.detail)), createdAt: Number(row.createdAt) }] } catch { return [] } })
+    },
+    countPlatformSubmissions: (exerciseId: string) => {
+      ensureOpen()
+      const rows = all("SELECT detail FROM platform_audit WHERE event='platform.submit.attempt'")
+      return rows.reduce((count, row) => { try { return String(JSON.parse(String(row.detail)).exerciseId) === exerciseId ? count + 1 : count } catch { return count } }, 0)
+    },
+    getAgentLease: (scope: string): AgentLease | null => {
+      ensureOpen()
+      const row = db.prepare('SELECT scope,ownerId,acquiredAt,expiresAt FROM agent_leases WHERE scope=?').get(scope) as any
+      return row ? { scope: String(row.scope), ownerId: String(row.ownerId), acquiredAt: Number(row.acquiredAt), expiresAt: Number(row.expiresAt) } : null
+    },
+    acquireAgentLease: (lease: AgentLease) => {
+      ensureOpen()
+      const result = db.prepare('INSERT INTO agent_leases (scope,ownerId,acquiredAt,expiresAt) VALUES (:scope,:ownerId,:acquiredAt,:expiresAt) ON CONFLICT(scope) DO UPDATE SET ownerId=excluded.ownerId,acquiredAt=excluded.acquiredAt,expiresAt=excluded.expiresAt WHERE agent_leases.expiresAt<=excluded.acquiredAt OR agent_leases.ownerId=excluded.ownerId').run(lease) as { changes?: number | bigint }
+      return Number(result.changes ?? 0) > 0
+    },
+    clearAgentLease: (scope: string) => {
+      ensureOpen()
+      db.prepare('DELETE FROM agent_leases WHERE scope=?').run(scope)
     },
   }
 }

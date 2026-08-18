@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import process from 'node:process'
 /* Host APIs differ between Cordis deployments. This is the only compatibility boundary. */
 export interface HttpRequest { body?: unknown; params: Record<string, string>; on?(event: string, cb: (...args: any[]) => void): void }
@@ -182,11 +183,7 @@ function createSubagentAdapter(ctx: any, subagents: any, agents: any): SessionFo
       }
       const detach = attachHarnessSessionEvents(ctx, childId, emit)
       return {
-        content: Promise.resolve(run.result).then((result: any) => {
-          const output = extractContent(result?.output ?? result)
-          if (result?.stopReason && result.stopReason !== 'completed') return `${output}\n[stopReason: ${result.stopReason}]`.trim()
-          return output
-        }),
+        content: Promise.resolve(run.result).then((result: any) => resolveSubagentContentWithDsmlFallback(run, result, emit)),
         onMessage(listener) {
           listeners.add(listener)
           for (const content of buffered.splice(0)) listener(content)
@@ -254,11 +251,169 @@ function attachHarnessSessionEvents(ctx: any, childId: string, emit: (content: s
 
 function extractEventText(event: any): string {
   const data = event?.data ?? event
-  if (typeof data?.chunk?.text === 'string') return data.chunk.text
+  const chunk = data?.chunk
+  // Stream deltas arrive token-by-token and made the task log unreadable. Keep
+  // only completed assistant blocks plus explicit host messages.
+  if (chunk?.type === 'block-end') return extractContent(chunk.block) as string
   if (typeof data?.text === 'string') return data.text
-  if (typeof data?.message?.content === 'string') return data.message.content
-  if (Array.isArray(data?.message?.content)) return data.message.content.map((item: any) => typeof item?.text === 'string' ? item.text : '').join('')
+  // Final assistant/message repeats the already-emitted block-end content; skip it
+  // for the live thought stream and read it directly in latestAssistantText().
   return ''
+}
+
+
+const DSML_TOOL_ROUND_LIMIT = 8
+const DSML_TOOL_COMMAND_LIMIT = 4
+const DSML_TOOL_TIMEOUT_MS = 120_000
+const DSML_TOOL_OUTPUT_LIMIT = 80_000
+
+interface DsmlToolCall { name: string; parameters: Record<string, string> }
+interface ShellRunResult { exitCode: number | null; signal: NodeJS.Signals | null; timedOut: boolean; stdout: string; stderr: string; truncated: boolean }
+
+async function resolveSubagentContentWithDsmlFallback(run: any, result: any, emit: (content: string) => void): Promise<string> {
+  let output = resultToText(result)
+  const transcript: string[] = [output]
+  let exhausted = false
+  for (let round = 1; round <= DSML_TOOL_ROUND_LIMIT; round += 1) {
+    const calls = parseDsmlToolCalls(output).filter(isShellLikeCall).slice(0, DSML_TOOL_COMMAND_LIMIT)
+    if (!calls.length) break
+    if (round === DSML_TOOL_ROUND_LIMIT) exhausted = true
+    const agent = run?.localAgent
+    if (!agent || typeof agent.followup !== 'function' || typeof agent.whenIdle !== 'function') {
+      transcript.push(`\n[DSML fallback] ${calls.length} shell call(s) detected, but this adapter has no live child agent for continuation.`)
+      break
+    }
+    const observations: string[] = []
+    for (let index = 0; index < calls.length; index += 1) {
+      const call = calls[index]!
+      const command = call.parameters.command ?? call.parameters.cmd ?? call.parameters.script ?? ''
+      if (!command.trim()) {
+        observations.push(`### Tool ${index + 1}: ${call.name}\nMissing command parameter.`)
+        continue
+      }
+      const description = call.parameters.description ?? `DSML ${call.name} command`
+      emit(`[DSML tool ${round}.${index + 1}] ${description}\n$ ${command}`)
+      const executed = await runShellCommand(command)
+      const rendered = renderShellResult(executed)
+      observations.push(`### Tool ${index + 1}: ${call.name}\nDescription: ${description}\nCommand:\n\`\`\`bash\n${command}\n\`\`\`\nResult:\n${rendered}`)
+      emit(`[DSML tool ${round}.${index + 1} result]\n${rendered}`)
+    }
+    const beforeSeq = Number(agent.session?.seq ?? agent.session?.events?.length ?? 0)
+    agent.followup({
+      role: 'user',
+      id: randomUUID(),
+      content: [{ type: 'text', text: formatDsmlToolFollowup(round, observations) }],
+      source: { kind: 'plugin', plugin: 'dsh-ctf-team', form: 'dsml-tool-result' },
+    })
+    await agent.whenIdle()
+    output = latestAssistantText(agent, beforeSeq) || output
+    transcript.push(`\n\n## DSML tool round ${round}\n${observations.join('\n\n')}\n\n## Agent continuation ${round}\n${output}`)
+  }
+  if (exhausted && parseDsmlToolCalls(output).filter(isShellLikeCall).length) transcript.push(`\n[DSML fallback] round limit ${DSML_TOOL_ROUND_LIMIT} reached; latest assistant output still contains shell calls.`)
+  return transcript.join('\n').trim()
+}
+
+function resultToText(result: any): string {
+  const output = extractContent(result?.output ?? result) as string
+  if (result?.stopReason && result.stopReason !== 'completed') return `${output}\n[stopReason: ${result.stopReason}]`.trim()
+  return output
+}
+
+function parseDsmlToolCalls(text: string): DsmlToolCall[] {
+  if (!text.includes('DSML')) return []
+  const calls: DsmlToolCall[] = []
+  const invokePattern = /<\s*｜｜DSML｜｜invoke\s+name="([^"]+)"\s*>([\s\S]*?)<\/\s*｜｜DSML｜｜invoke\s*>/g
+  for (const match of text.matchAll(invokePattern)) {
+    const parameters: Record<string, string> = {}
+    const body = match[2] ?? ''
+    const parameterPattern = /<\s*｜｜DSML｜｜parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/\s*｜｜DSML｜｜parameter\s*>/g
+    for (const parameter of body.matchAll(parameterPattern)) parameters[parameter[1] ?? ''] = decodeXmlEntities(parameter[2] ?? '').trim()
+    calls.push({ name: (match[1] ?? '').trim(), parameters })
+  }
+  return calls
+}
+
+function isShellLikeCall(call: DsmlToolCall): boolean {
+  return ['shell', 'bash', 'sh', 'terminal'].includes(call.name.toLowerCase())
+}
+
+function decodeXmlEntities(value: string): string {
+  return value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+}
+
+function runShellCommand(command: string): Promise<ShellRunResult> {
+  return new Promise((resolve) => {
+    const child = spawn('bash', ['-lc', command], { cwd: process.cwd(), env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    let truncated = false
+    let settled = false
+    const append = (which: 'stdout' | 'stderr', chunk: Buffer) => {
+      const next = redactRuntimeSecrets(chunk.toString('utf8'))
+      if (which === 'stdout') stdout = appendBounded(stdout, next)
+      else stderr = appendBounded(stderr, next)
+      if ((stdout.length + stderr.length) >= DSML_TOOL_OUTPUT_LIMIT) truncated = true
+    }
+    const timer = setTimeout(() => {
+      if (settled) return
+      child.kill('SIGTERM')
+      setTimeout(() => { if (!settled) child.kill('SIGKILL') }, 1500).unref()
+    }, DSML_TOOL_TIMEOUT_MS)
+    timer.unref()
+    child.stdout.on('data', (chunk: Buffer) => append('stdout', chunk))
+    child.stderr.on('data', (chunk: Buffer) => append('stderr', chunk))
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ exitCode: null, signal: null, timedOut: false, stdout, stderr: appendBounded(stderr, redactRuntimeSecrets(String(error))), truncated })
+    })
+    child.on('close', (exitCode, signal) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ exitCode, signal, timedOut: signal === 'SIGTERM' || signal === 'SIGKILL', stdout, stderr, truncated })
+    })
+  })
+}
+
+function appendBounded(current: string, next: string): string {
+  if (current.length >= DSML_TOOL_OUTPUT_LIMIT) return current
+  const remaining = DSML_TOOL_OUTPUT_LIMIT - current.length
+  return current + next.slice(0, remaining)
+}
+
+function renderShellResult(result: ShellRunResult): string {
+  const status = `exitCode=${result.exitCode ?? 'null'} signal=${result.signal ?? 'none'} timedOut=${result.timedOut}`
+  const parts = [`Status: ${status}`]
+  if (result.stdout) parts.push(`stdout:\n\`\`\`text\n${result.stdout}\n\`\`\``)
+  if (result.stderr) parts.push(`stderr:\n\`\`\`text\n${result.stderr}\n\`\`\``)
+  if (result.truncated) parts.push(`[output truncated at ${DSML_TOOL_OUTPUT_LIMIT} chars]`)
+  return parts.join('\n')
+}
+
+function formatDsmlToolFollowup(round: number, observations: string[]): string {
+  return `宿主已执行你上一轮输出的 DSML shell 调用（round ${round}）。请基于以下结果继续完成题目；若还需要命令，继续用同样的 DSML shell 调用格式，每轮只放关键命令。\n\n${observations.join('\n\n')}`
+}
+
+function latestAssistantText(agent: any, afterSeq: number): string {
+  const events = Array.isArray(agent.session?.events) ? agent.session.events : []
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'assistant/message') continue
+    const seq = Number(event.seq ?? index)
+    if (seq < afterSeq) continue
+    return extractContent(event.data?.message?.content ?? '') as string
+  }
+  return ''
+}
+
+function redactRuntimeSecrets(text: string): string {
+  return text
+    .replace(/ak_live_[A-Za-z0-9_-]{8,256}/g, '[REDACTED_ACCESS_KEY]')
+    .replace(/Authorization=eyJ[A-Za-z0-9._-]+/g, 'Authorization=[REDACTED_JWT]')
+    .replace(/Bearer\s+eyJ[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED_JWT]')
+    .replace(/(DEEPSEEK_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|DASCTF_ACCESS_KEY)=\S+/g, '$1=[REDACTED]')
 }
 
 function createSessionForkAdapter(session: any): SessionForkAdapter {

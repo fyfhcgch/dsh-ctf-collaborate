@@ -13,6 +13,7 @@ interface Thought { id: string; challengeId: string; source: string; content: st
 interface Evidence { id: string; challengeId: string; type: EvidenceType; content: string; createdAt: number }
 interface Task { taskId: string; challengeId: string; ownerUserId: string; expertType: 'general' | 'pwn' | 'reverse'; prompt: string; done: boolean; result: string; createdAt: number }
 interface Detail { challenge: Challenge; sharedNote: SharedNote | null; notes: Note[]; thoughts: Thought[]; evidence: Evidence[]; tasks: Task[] }
+interface PlatformStatus { enabled: boolean; competitionId?: string; stageId?: string; platformHost?: string; accessKeyConfigured?: boolean; gatewayEndpointConfigured?: boolean; gatewayEndpointAllowed?: boolean; event?: { startAt: string; endAt: string; active: boolean }; policy?: { maxSubmissionsPerExercise: number; requiresHumanConfirmation: boolean; automaticRetries: boolean } }
 
 const base = (document.querySelector('meta[name="ctf-team-base"]')?.getAttribute('content') || location.pathname).replace(/\/$/, '')
 const apiUrl = (path: string) => `${base}/api${path}`
@@ -38,6 +39,7 @@ const app = createApp({
       edit: { title: '', category: 'web' as Category, status: 'pending' as Status, description: '', attachments: '', flag: '' },
       note: { authorUserId: '', content: '' }, evidence: { type: 'tool_output' as EvidenceType, content: '' },
       task: { ownerUserId: '', expertType: 'general' as 'general' | 'pwn' | 'reverse', prompt: '' }, sharedNote: { content: '', updatedBy: '' }, sharedNoteDirty: false, sharedNoteChallengeId: '', memberName: savedMember(), eventSource: null as EventSource | null,
+      platform: { status: null as PlatformStatus | null, loading: false, serverHost: 'https://pro.dasctf.com', accessKey: '', gatewayEndpoint: '' },
     })
     const counts = computed(() => state.challenges.reduce((result: Record<Status, number>, challenge: Challenge) => { result[challenge.status] += 1; return result }, { pending: 0, solving: 0, solved: 0 } as Record<Status, number>))
     const selected = computed(() => state.detail?.challenge ?? state.challenges.find((item: Challenge) => item.challengeId === state.selectedId) ?? null)
@@ -48,6 +50,39 @@ const app = createApp({
     const notify = (message: string) => { state.notice = message; state.error = '' }
     const currentMember = () => state.memberName.trim() || 'web-user'
     const saveMember = () => { state.memberName = state.memberName.trim(); try { localStorage.setItem('dsh-ctf-team:member', state.memberName) } catch {} }
+    const loadPlatformStatus = async () => {
+      try {
+        const status = await json('/platform/status') as PlatformStatus
+        state.platform.status = status
+        if (status.platformHost) state.platform.serverHost = status.platformHost
+      } catch (error) { notifyError(error) }
+    }
+    const configurePlatform = async () => {
+      state.platform.loading = true
+      try {
+        const result = await post('/platform/configure', { serverHost: state.platform.serverHost, accessKey: state.platform.accessKey, gatewayEndpoint: state.platform.gatewayEndpoint || undefined }) as { platform: PlatformStatus }
+        state.platform.status = result.platform
+        state.platform.accessKey = ''
+        notify('平台接入凭证已加载到当前 Harness 进程')
+      } catch (error) { notifyError(error) } finally { state.platform.loading = false }
+    }
+    const clearPlatformCredentials = async () => {
+      state.platform.loading = true
+      try {
+        const result = await post('/platform/clear-credentials', {}) as { platform: PlatformStatus }
+        state.platform.status = result.platform
+        state.platform.accessKey = ''
+        notify('平台运行时凭证已清除')
+      } catch (error) { notifyError(error) } finally { state.platform.loading = false }
+    }
+    const syncPlatform = async () => {
+      state.platform.loading = true
+      try {
+        const result = await post('/platform/sync', {}) as { sync: { notices: number; exercises: number; syncedChallenges: number; score: unknown; rank: unknown } }
+        notify(`平台同步完成：公告 ${result.sync.notices}，题目 ${result.sync.exercises}，写入 ${result.sync.syncedChallenges}`)
+        await Promise.all([load(true), loadPlatformStatus()])
+      } catch (error) { notifyError(error) } finally { state.platform.loading = false }
+    }
     const load = async (keepSelection = true) => {
       state.loading = true
       try {
@@ -116,10 +151,11 @@ const app = createApp({
       state.eventSource.onmessage = () => { void load(true) }
       state.eventSource.onerror = () => { /* EventSource will reconnect; polling below keeps the view fresh. */ }
       void load(false)
+      void loadPlatformStatus()
       timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load(true) }, 15000)
     })
     onBeforeUnmount(() => { if (timer !== undefined) window.clearInterval(timer); state.eventSource?.close() })
-    return { state, counts, selected, categoryLabel, statusLabel, evidenceLabel, formatTime, load, selectChallenge, createChallenge, updateChallenge, deleteChallenge, saveSharedNote, addEvidence, startTask, switchTab, saveMember }
+    return { state, counts, selected, categoryLabel, statusLabel, evidenceLabel, formatTime, load, selectChallenge, createChallenge, updateChallenge, deleteChallenge, saveSharedNote, addEvidence, startTask, switchTab, saveMember, apiUrl, loadPlatformStatus, configurePlatform, clearPlatformCredentials, syncPlatform }
   },
   template: `
   <el-container class="ctf-app">
@@ -129,6 +165,14 @@ const app = createApp({
     </el-header>
     <el-alert v-if="state.error" :title="state.error" type="error" show-icon closable @close="state.error=''" />
     <el-alert v-if="state.notice" :title="state.notice" type="success" show-icon closable @close="state.notice=''" />
+    <el-card class="platform-panel" shadow="never">
+      <div class="platform-heading"><div><h2>西湖论剑 DASCTF 平台接入</h2><p>Server Host 与 AccessKey 只加载到当前 Harness 进程；模型原始完整 URL 按赛事手册白名单校验。</p></div><el-button @click="loadPlatformStatus" :loading="state.platform.loading">刷新状态</el-button></div>
+      <el-form class="platform-form" label-position="top" @submit.prevent="configurePlatform">
+        <div class="platform-grid"><el-form-item label="Server Host"><el-input v-model="state.platform.serverHost" placeholder="https://pro.dasctf.com" /></el-form-item><el-form-item label="AccessKey"><el-input v-model="state.platform.accessKey" type="password" show-password autocomplete="off" placeholder="ak_live_..." /></el-form-item><el-form-item label="模型原始完整 URL（可选）"><el-input v-model="state.platform.gatewayEndpoint" placeholder="https://api.deepseek.com/v1/chat/completions" /></el-form-item></div>
+        <div class="platform-actions"><el-button type="primary" native-type="submit" :loading="state.platform.loading">加载凭证</el-button><el-button @click="clearPlatformCredentials" :loading="state.platform.loading">清除运行时凭证</el-button><el-button type="success" plain @click="syncPlatform" :loading="state.platform.loading">同步平台数据</el-button><el-button tag="a" :href="apiUrl('/platform/report')" target="_blank">审计报告</el-button></div>
+        <div class="platform-status"><el-tag :type="state.platform.status?.accessKeyConfigured ? 'success' : 'info'">AccessKey：{{ state.platform.status?.accessKeyConfigured ? '已加载' : '未加载' }}</el-tag><el-tag :type="state.platform.status?.gatewayEndpointAllowed ? 'success' : (state.platform.status?.gatewayEndpointConfigured ? 'danger' : 'info')">模型 URL：{{ state.platform.status?.gatewayEndpointAllowed ? '白名单通过' : (state.platform.status?.gatewayEndpointConfigured ? '待修正' : '未填写') }}</el-tag><el-tag :type="state.platform.status?.event?.active ? 'success' : 'warning'">赛事窗口：{{ state.platform.status?.event?.active ? '当前可操作' : '当前仅同步/记录' }}</el-tag><span v-if="state.platform.status?.platformHost">{{ state.platform.status.platformHost }} · 比赛 {{ state.platform.status.competitionId }} / 阶段 {{ state.platform.status.stageId }}</span></div>
+      </el-form>
+    </el-card>
     <div class="ctf-stats"><el-card shadow="never"><b>{{ state.challenges.length }}</b><span>题目总数</span></el-card><el-card shadow="never"><b>{{ counts.pending }}</b><span>待解</span></el-card><el-card shadow="never"><b>{{ counts.solving }}</b><span>正在解</span></el-card><el-card shadow="never"><b>{{ counts.solved }}</b><span>已解出</span></el-card></div>
     <el-main class="ctf-layout">
       <el-card class="challenge-sidebar" shadow="never">

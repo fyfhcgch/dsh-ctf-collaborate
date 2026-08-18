@@ -56,6 +56,12 @@ export interface TeamDb {
   listOperations(afterSequence: number, limit: number): SyncBatch
   getVersion(scope: string, entityId: string): TeamVersion | null
   setVersion(scope: string, entityId: string, version: TeamVersion): void
+  appendPlatformAudit(entry: PlatformAuditEntry): void
+  listPlatformAudit(limit: number): PlatformAuditEntry[]
+  countPlatformSubmissions(exerciseId: string): number
+  getAgentLease(scope: string): AgentLease | null
+  acquireAgentLease(lease: AgentLease): boolean
+  clearAgentLease(scope: string): void
 }
 
 export type TeamOperationKind =
@@ -95,3 +101,6 @@ export interface TeamIdentity {
   peerId: string
   createdAt: number
 }
+
+export interface PlatformAuditEntry { id: string; event: string; detail: unknown; createdAt: number }
+export interface AgentLease { scope: string; ownerId: string; acquiredAt: number; expiresAt: number }
