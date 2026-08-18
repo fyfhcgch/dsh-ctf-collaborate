@@ -24,7 +24,18 @@ export function setupSandboxTool(ctx: any, config: { sandboxImage?: string }): v
         env: { type: 'object', additionalProperties: { type: 'string' } },
         mounts: { type: 'array', items: { type: 'object' } },
       },
-      output: { schema: { type: 'object' } },
+      output: {
+        schema: { type: 'object' },
+        render: (_args: any, value: any) => {
+          const parts = [
+            ...(typeof value?.exitCode === 'number' ? [`exit ${value.exitCode}`] : []),
+            ...(value?.timedOut ? ['timed out'] : []),
+            ...(value?.stdout ? [value.stdout] : []),
+            ...(value?.stderr ? ['[stderr]', value.stderr] : []),
+          ]
+          return [{ type: 'text', text: parts.length > 0 ? parts.join('\n') : '(sandbox_run completed with no output)' }]
+        },
+      },
       async execute(args: any) {
         const result = await sandbox.run({
           image: args.image ?? defaultImage,

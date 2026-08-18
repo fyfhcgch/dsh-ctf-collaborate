@@ -104,7 +104,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               title: 'Open CTF Team workspace',
               'aria-label': 'Open CTF Team workspace',
               'data-dsh-ctf-team-workspace-button': 'true',
-              onClick: () => { board.toggleOpen() },
+              onClick: () => {
+                // Open the standalone /ctf-team panel in the external browser
+                // (the desktop shell hands http(s) window.open to the system
+                // browser; in a normal browser it opens a new tab).
+                const origin = globalThis.location?.origin
+                if (origin) window.open(`${origin}/ctf-team`, '_blank', 'noopener')
+                else board.toggleOpen()
+              },
             },
             wide ? 'CTF Board' : '🏁',
           )
