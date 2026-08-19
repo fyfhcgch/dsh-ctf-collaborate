@@ -83,6 +83,67 @@ export function apply(ctx) {
     }
   }
 
+  /** 将平台题目详情整理为 planner.start 输入并启动专家工作流。 */
+  async function startSolving(args) {
+    const planner = ctx.get('planner')
+    if (!planner || typeof planner.start !== 'function') {
+      return { ok: false, error: 'planner 服务不可用：请确认 @dsh-external/dsh-planner 已在 profile bundles 中启用' }
+    }
+    const detail = args?.detail && typeof args.detail === 'object' ? args.detail : {}
+    const exerciseId = String(args?.exerciseId ?? detail.id ?? '').trim()
+    const title = String(detail.name ?? args?.title ?? (exerciseId ? `CTF 题目 ${exerciseId}` : 'CTF 题目'))
+    const files = detail.attachment && Array.isArray(detail.attachment.files) ? detail.attachment.files : []
+    const attachments = files.map((file, index) => ({
+      name: String(file?.name ?? `attachment-${index + 1}`),
+      url: String(file?.url ?? ''),
+      note: '平台附件',
+    }))
+    const endpoints = Array.isArray(detail.endpoints) ? detail.endpoints : []
+    const endpointText = endpoints.length
+      ? endpoints.map((ep, index) => {
+          const ips = Array.isArray(ep?.exposeIps) ? ep.exposeIps.join(', ') : ''
+          const ports = Array.isArray(ep?.ports) ? ep.ports.join(', ') : ''
+          const users = Array.isArray(ep?.users) ? ep.users.map((u) => `${u?.username ?? ''}/${u?.password ?? ''}`).join(', ') : ''
+          const maps = Array.isArray(ep?.portMappings) ? ep.portMappings.map((m) => `${m?.port ?? ''}->${m?.proxy ?? ''}`).join(', ') : ''
+          return `靶机 ${index + 1}: IP=${ips || '-'}; ports=${ports || '-'}; users=${users || '-'}; mappings=${maps || '-'}`
+        }).join('\n')
+      : ''
+    const description = [
+      exerciseId ? `题目 ID: ${exerciseId}` : '',
+      `题目名称: ${title}`,
+      detail.category ? `分类: ${detail.category}` : '',
+      detail.difficulty ? `难度: ${detail.difficulty}` : '',
+      detail.score !== undefined ? `分值: ${detail.score}` : '',
+      detail.hasSolved ? '状态: 已解决' : '状态: 未解决',
+      detail.description ? `题目描述:\n${detail.description}` : '',
+      endpointText ? `靶机信息:\n${endpointText}` : '',
+      attachments.length ? `附件:\n${attachments.map((a) => `- ${a.name}: ${a.url}`).join('\n')}` : '',
+    ].filter(Boolean).join('\n\n')
+    const planId = `dasctf-${exerciseId || 'challenge'}-${Date.now()}`.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80)
+    const result = await planner.start({
+      planId,
+      title,
+      description,
+      attachments,
+      meta: {
+        source: 'ctf-console',
+        exerciseId: exerciseId || undefined,
+        platformHost: state.serverHost || undefined,
+        difficulty: detail.difficulty,
+        score: detail.score,
+      },
+      exerciseId: exerciseId || undefined,
+      endpoints,
+      url: endpoints[0]?.exposeIps?.[0] || undefined,
+    })
+    return {
+      ok: true,
+      code: '00000',
+      message: '解题计划已启动',
+      data: { planId: result.planId, category: result.plan?.category, status: result.plan?.status || 'running' },
+    }
+  }
+
   /** 分发 action。 */
   async function handle(action, args) {
     switch (action) {
@@ -117,6 +178,8 @@ export function apply(ctx) {
           exerciseId: Number(args?.exerciseId),
           flag: String(args?.flag ?? ''),
         })
+      case 'solve':
+        return startSolving(args)
       default:
         return { ok: false, error: '未知操作: ' + action }
     }

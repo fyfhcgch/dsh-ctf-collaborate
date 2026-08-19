@@ -75,6 +75,15 @@ function apply(ctx) {
   }
 
   let panelDisposer = null
+  let latestInputActions = null
+  let latestSessionId = ''
+
+  function captureInputActions(props) {
+    if (props && props.inputActions && typeof props.inputActions.setDraft === 'function' && typeof props.inputActions.submit === 'function') {
+      latestInputActions = props.inputActions
+      latestSessionId = String(props.sessionId || '')
+    }
+  }
 
   function openPanel() {
     if (!panelDisposer) {
@@ -154,6 +163,7 @@ function apply(ctx) {
   }
 
   function HeaderButton(props) {
+    captureInputActions(props)
     return h(
       'button',
       {
@@ -192,6 +202,11 @@ function apply(ctx) {
     const [flagInput, setFlagInput] = React.useState('')
     const [log, setLog] = React.useState([])
     const [busy, setBusy] = React.useState(false)
+    const [role, setRole] = React.useState(function () { return localStorage.getItem('ctf-console.role') || 'leader' })
+    const [memberName, setMemberName] = React.useState(function () { return localStorage.getItem('ctf-console.member') || '队长' })
+    const [teamChallenges, setTeamChallenges] = React.useState([])
+    const [candidateFlag, setCandidateFlag] = React.useState('')
+    const [candidateNote, setCandidateNote] = React.useState('')
 
     React.useEffect(function () {
       call('status').then(function (s) {
@@ -199,6 +214,8 @@ function apply(ctx) {
         setServerHost(s.serverHost || '')
       })
     }, [])
+    React.useEffect(function () { localStorage.setItem('ctf-console.role', role) }, [role])
+    React.useEffect(function () { localStorage.setItem('ctf-console.member', memberName) }, [memberName])
 
     function addLog(kind, msg) {
       setLog(function (prev) {
@@ -247,10 +264,27 @@ function apply(ctx) {
         })
     }
 
+    async function syncBoardConfig(nextServerHost, nextAccessKey) {
+      const res = await fetch('/ctf-team/api/platform/configure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serverHost: nextServerHost, accessKey: nextAccessKey }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error('CTF Board 平台配置同步失败: ' + text.slice(0, 200))
+      }
+      return res.json()
+    }
     function saveConfig() {
       call('configure', { serverHost: serverHost, accessKey: accessKey }).then(function (s) {
         setStatus(s)
-        addLog('ok', '配置已保存' + (s.hasKey ? '（含 AccessKey）' : ''))
+        addLog('ok', '控制台配置已保存' + (s.hasKey ? '（含 AccessKey）' : ''))
+        syncBoardConfig(serverHost, accessKey).then(function () {
+          addLog('ok', 'CTF Board 平台配置已同步')
+        }).catch(function (e) {
+          addLog('err', String((e && e.message) || e))
+        })
       })
     }
     function loadList() {
@@ -284,6 +318,215 @@ function apply(ctx) {
     function recover(id) {
       run('recover', { exerciseId: id }, '环境回收请求已提交').then(function () {
         setTimeout(function () { openDetail(id) }, 1500)
+      })
+    }
+    function boardCategory(raw) {
+      const value = String(raw || '').toLowerCase()
+      if (value === 'reverse') return 'rev'
+      if (value === 'forensics') return 'forensic'
+      if (['web', 'pwn', 'crypto', 'rev', 'misc', 'forensic'].indexOf(value) >= 0) return value
+      return 'misc'
+    }
+    function boardChallengePayload(d, solveData) {
+      const id = 'dasctf-' + String(d.id || Date.now()).replace(/[^A-Za-z0-9_-]/g, '-')
+      const files = d.attachment && Array.isArray(d.attachment.files) ? d.attachment.files : []
+      return {
+        challengeId: id,
+        title: String(d.name || ('DASCTF #' + (d.id || 'unknown'))),
+        category: boardCategory((solveData && solveData.category) || d.category),
+        status: 'solving',
+        description: JSON.stringify({ exercise: d, planner: solveData || null }, null, 2),
+        attachmentPaths: files.map(function (f) { return String(f.url || f.name || '') }).filter(Boolean),
+      }
+    }
+    async function syncBoardChallenge(d, solveData) {
+      const payload = boardChallengePayload(d, solveData)
+      const create = await fetch('/ctf-team/api/challenges', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (create.ok) return { action: 'created', challengeId: payload.challengeId }
+      if (create.status === 409) {
+        const update = await fetch('/ctf-team/api/challenges/' + encodeURIComponent(payload.challengeId) + '/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: payload.title,
+            category: payload.category,
+            status: payload.status,
+            description: payload.description,
+            attachmentPaths: payload.attachmentPaths,
+          }),
+        })
+        if (update.ok) return { action: 'updated', challengeId: payload.challengeId }
+        const error = await update.text()
+        throw new Error('CTF Board 更新失败: ' + error.slice(0, 200))
+      }
+      const error = await create.text()
+      throw new Error('CTF Board 创建失败: ' + error.slice(0, 200))
+    }
+    function conversationPromptForAgent(d, boardInfo, solveData) {
+      const files = d.attachment && Array.isArray(d.attachment.files) ? d.attachment.files : []
+      const endpoints = Array.isArray(d.endpoints) ? d.endpoints : []
+      return [
+        '请直接接管并开始解这道 CTF Web 题，不要只说流程。',
+        '',
+        '题目：' + String(d.name || boardInfo.challengeId),
+        'exerciseId：' + String(d.id || ''),
+        'challengeId：' + String(boardInfo.challengeId || ''),
+        solveData && solveData.planId ? '自动化流水线 planId：' + String(solveData.planId) : '',
+        solveData && solveData.category ? '流水线分类：' + String(solveData.category) : '',
+        '难度：' + String(d.difficulty || ''),
+        '分值：' + String(d.score || ''),
+        '',
+        '题目描述：',
+        String(d.description || ''),
+        '',
+        endpoints.length ? '靶机/端点：\n' + endpoints.map(function (ep, i) {
+          return '- #' + (i + 1) + ' IP=' + (ep.exposeIps || []).join(',') + ' ports=' + (ep.ports || []).join(',') + ' mappings=' + (ep.portMappings || []).map(function (m) { return String(m.port || '') + '->' + String(m.proxy || '') }).join(',')
+        }).join('\n') : '靶机/端点：无',
+        '',
+        files.length ? '附件：\n' + files.map(function (f) { return '- ' + String(f.name || '') + ': ' + String(f.url || '') }).join('\n') : '附件：无',
+        '',
+        '要求：',
+        '1. 现在就在当前对话里开始实际解题；',
+        '2. 先做信息收集和漏洞假设，再用可用工具验证；',
+        '3. 若拿到 flag，提交时只提交 {} 内内容；',
+        '4. 同步把关键证据/思路写入 CTF Board（如可行）。',
+      ].filter(function (line) { return line !== '' || true }).join('\n')
+    }
+    function submitToCurrentConversation(prompt) {
+      if (!latestInputActions || typeof latestInputActions.setDraft !== 'function' || typeof latestInputActions.submit !== 'function') return false
+      latestInputActions.setDraft(prompt)
+      setTimeout(function () {
+        latestInputActions.submit()
+      }, 0)
+      return true
+    }
+    function parseBoardExercise(challenge) {
+      try {
+        const parsed = JSON.parse(challenge.description || '{}')
+        return parsed && parsed.exercise ? parsed.exercise : null
+      } catch (_) {
+        return null
+      }
+    }
+    function boardIdForExerciseId(id) {
+      return 'dasctf-' + String(id || '').replace(/[^A-Za-z0-9_-]/g, '-')
+    }
+    async function syncTeamChallenges() {
+      const res = await fetch('/ctf-team/api/challenges')
+      if (!res.ok) throw new Error('同步队伍题目失败: ' + (await res.text()).slice(0, 200))
+      const list = await res.json()
+      setTeamChallenges(Array.isArray(list) ? list : [])
+      addLog('ok', '已同步队伍题目：' + (Array.isArray(list) ? list.length : 0) + ' 道')
+      return list
+    }
+    async function leaderPublishLoadedChallenges() {
+      if (!flat.length) {
+        addLog('warn', '请先由队长加载平台题目')
+        return
+      }
+      setBusy(true)
+      try {
+        let count = 0
+        for (const x of flat) {
+          const fakeDetail = Object.assign({}, x, { name: x.name || x.title, description: x.description || '', attachment: x.attachment || { files: [] }, endpoints: x.endpoints || [] })
+          await syncBoardChallenge(fakeDetail, null)
+          count += 1
+        }
+        addLog('ok', '队长已发布题库到 CTF Board：' + count + ' 道')
+        await syncTeamChallenges()
+      } catch (e) {
+        addLog('err', String((e && e.message) || e))
+      } finally {
+        setBusy(false)
+      }
+    }
+    async function openTeamChallenge(challengeId) {
+      setBusy(true)
+      try {
+        const res = await fetch('/ctf-team/api/challenges/' + encodeURIComponent(challengeId))
+        if (!res.ok) throw new Error('读取队伍题目失败: ' + (await res.text()).slice(0, 200))
+        const data = await res.json()
+        const exercise = parseBoardExercise(data.challenge)
+        if (exercise) {
+          setSelected(exercise.id)
+          setDetail(exercise)
+          setFlagInput(data.challenge.flag || '')
+          addLog('ok', '已打开队伍题目：' + data.challenge.title)
+        } else {
+          addLog('warn', '该 Board 题目没有平台 exercise 详情，请由队长重新同步')
+        }
+      } catch (e) {
+        addLog('err', String((e && e.message) || e))
+      } finally {
+        setBusy(false)
+      }
+    }
+    async function submitCandidateFlag() {
+      const flag = candidateFlag.trim()
+      if (!detail) return addLog('warn', '请先选择题目')
+      if (!flag) return addLog('warn', '请先填写候选 flag')
+      const challengeId = boardIdForExerciseId(detail.id)
+      setBusy(true)
+      try {
+        await syncBoardChallenge(detail, null)
+        const content = JSON.stringify({ kind: 'candidate_flag', member: memberName || '队员', exerciseId: detail.id, title: detail.name, flag: flag, note: candidateNote.trim(), createdAt: Date.now() }, null, 2)
+        await postBoard('/evidence', { challengeId: challengeId, type: 'log', content: content })
+        await postBoard('/notes', { challengeId: challengeId, authorUserId: memberName || '队员', content: '[候选 flag] ' + flag + (candidateNote.trim() ? '\n' + candidateNote.trim() : '') })
+        await postBoard('/challenges/' + encodeURIComponent(challengeId) + '/update', { flag: flag, status: 'solving' })
+        setFlagInput(flag)
+        setCandidateFlag('')
+        setCandidateNote('')
+        addLog('ok', '候选 flag 已汇总到队长：' + challengeId)
+        await syncTeamChallenges()
+      } catch (e) {
+        addLog('err', String((e && e.message) || e))
+      } finally {
+        setBusy(false)
+      }
+    }
+    async function postBoard(path, body) {
+      const res = await fetch('/ctf-team/api' + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error('CTF Board API 失败 ' + path + ': ' + text.slice(0, 200))
+      }
+      return res.json()
+    }
+    function startSolving() {
+      if (!detail) {
+        addLog('warn', '请先选择题目')
+        return
+      }
+      setBusy(true)
+      ;(async function () {
+        const solveRes = await call('solve', { exerciseId: detail.id, detail: detail })
+        if (!solveRes || !solveRes.ok || solveRes.code !== '00000') {
+          throw new Error((solveRes && (solveRes.error || solveRes.message)) || '自动化解题流水线启动失败')
+        }
+        addLog('ok', '自动化解题流水线已启动：' + solveRes.data.planId + (solveRes.data.category ? ' · ' + solveRes.data.category : ''))
+        const info = await syncBoardChallenge(detail, solveRes.data)
+        addLog('ok', 'CTF Board 已' + (info.action === 'created' ? '创建' : '更新') + '：' + info.challengeId)
+        try {
+          await postBoard('/platform/exercise/sync', { exerciseId: detail.id })
+          addLog('ok', 'CTF Board 单题平台数据已同步')
+        } catch (e) {
+          addLog('warn', String((e && e.message) || e))
+        }
+        addLog('ok', '主流程：Planner → 多专家 → Blackboard → Verifier；Board 仅作可视化登记')
+        const submitted = submitToCurrentConversation(conversationPromptForAgent(detail, info, solveRes.data))
+        addLog(submitted ? 'ok' : 'warn', submitted ? '已自动提交到当前对话，开始由我接管解题' : '无法自动提交到当前对话：请从会话头部 🖥️ CTF 入口打开一次控制台')
+      })().catch(function (e) {
+        addLog('err', String((e && e.message) || e))
+      }).finally(function () {
+        setBusy(false)
       })
     }
     function submit(id) {
@@ -363,6 +606,41 @@ function apply(ctx) {
               ? '已配置：' + status.serverHost + '（含 AccessKey）· 通道 ' + status.transport
               : '凭据仅保存在插件内存，不持久化。'
           )
+        ),
+        elc(
+          'div',
+          'ctfcon-card',
+          elc('div', 'ctfcon-sec', '队伍协作'),
+          el(
+            'div',
+            { className: 'ctfcon-row', style: { marginBottom: 6 } },
+            el('select', {
+              className: 'ctfcon-input',
+              style: { maxWidth: 120 },
+              value: role,
+              onChange: function (e) { setRole(e.target.value) },
+            }, el('option', { value: 'leader' }, '队长'), el('option', { value: 'member' }, '队员')),
+            el('input', {
+              className: 'ctfcon-input',
+              style: { flex: 1 },
+              value: memberName,
+              placeholder: role === 'leader' ? '队长名称' : '队员名称',
+              onChange: function (e) { setMemberName(e.target.value) },
+            }),
+            el('button', { className: 'ctfcon-btn', disabled: busy, onClick: syncTeamChallenges }, '同步队伍题目'),
+            role === 'leader' ? el('button', { className: 'ctfcon-btn primary', disabled: busy, onClick: leaderPublishLoadedChallenges }, '队长发布题库') : null
+          ),
+          el('div', { className: 'ctfcon-muted', style: { marginBottom: 6 } }, role === 'leader' ? '队长负责加载平台题目、发布题库、汇总并提交最终 flag。' : '队员从队长同步题目，独立解题并把候选 flag 汇总给队长。'),
+          teamChallenges.length ? el(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 150, overflow: 'auto' } },
+            teamChallenges.map(function (ch) {
+              return el('div', { key: ch.challengeId, className: 'ctfcon-item', onClick: function () { openTeamChallenge(ch.challengeId) } },
+                el('span', null, (ch.status === 'solved' ? '✅ ' : ch.flag ? '🚩 ' : '⬜ ') + ch.title),
+                el('span', { className: 'ctfcon-muted' }, ch.category + ' · ' + ch.challengeId + (ch.flag ? ' · 有候选 flag' : ''))
+              )
+            })
+          ) : el('div', { className: 'ctfcon-muted' }, '暂无队伍题目；队长先加载平台题目后点击「队长发布题库」。')
         ),
         elc(
           'div',
@@ -474,24 +752,45 @@ function apply(ctx) {
               el(
                 'div',
                 { className: 'ctfcon-row', style: { marginBottom: 8 } },
-                el('button', { className: 'ctfcon-btn primary', disabled: busy, onClick: function () { build(detail.id) } }, '启动环境'),
+                el('button', { className: 'ctfcon-btn primary', disabled: busy, onClick: startSolving }, '开始解题'),
+                el('button', { className: 'ctfcon-btn', disabled: busy, onClick: function () { build(detail.id) } }, '启动环境'),
                 el('button', { className: 'ctfcon-btn', disabled: busy, onClick: function () { recover(detail.id) } }, '回收环境'),
                 el('button', { className: 'ctfcon-btn', disabled: busy, onClick: function () { openDetail(detail.id) } }, '刷新详情')
               ),
               el(
                 'div',
-                { className: 'ctfcon-row' },
+                { className: 'ctfcon-row', style: { marginBottom: 8 } },
                 el('input', {
                   className: 'ctfcon-input',
                   style: { flex: 1 },
                   value: flagInput,
-                  placeholder: 'flag',
+                  placeholder: role === 'leader' ? '最终 flag（队长提交）' : '队长汇总区中的候选 flag',
                   onChange: function (e) {
                     setFlagInput(e.target.value)
                   },
                 }),
-                el('button', { className: 'ctfcon-btn primary', disabled: busy, onClick: function () { submit(detail.id) } }, '提交 flag')
-              )
+                role === 'leader' ? el('button', { className: 'ctfcon-btn primary', disabled: busy, onClick: function () { submit(detail.id) } }, '队长提交最终 flag') : null
+              ),
+              elc('div', 'ctfcon-sec', '候选 flag 汇总'),
+              el(
+                'div',
+                { className: 'ctfcon-row', style: { marginBottom: 6 } },
+                el('input', {
+                  className: 'ctfcon-input',
+                  style: { flex: 1 },
+                  value: candidateFlag,
+                  placeholder: role === 'leader' ? '队长也可记录候选 flag' : '队员提交候选 flag 给队长',
+                  onChange: function (e) { setCandidateFlag(e.target.value) },
+                }),
+                el('button', { className: 'ctfcon-btn', disabled: busy, onClick: submitCandidateFlag }, '汇总给队长')
+              ),
+              el('textarea', {
+                className: 'ctfcon-input',
+                style: { width: '100%', minHeight: 62, resize: 'vertical' },
+                value: candidateNote,
+                placeholder: '候选 flag 说明 / 证据 / 复现步骤（可选）',
+                onChange: function (e) { setCandidateNote(e.target.value) },
+              })
             )
           : null,
         elc(
@@ -542,6 +841,10 @@ function apply(ctx) {
         disposers.forEach(function (d) {
           if (d) d()
         })
+        if (panelDisposer) {
+          panelDisposer()
+          panelDisposer = null
+        }
       }
     },
     'ctf-console client slots'
