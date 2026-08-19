@@ -1,0 +1,7 @@
+# dsh-ctf-console bundle patch: inserts the CTF console row over the profile
+# entry list. The host half registers the /api/ctf-console/* prefix route and
+# calls the CTF platform API with global fetch; the client half mounts the
+# sidebar/session-header entries and the details panel.
+- insert:
+    - id: ctf-console
+      name: '@dsh-external/dsh-ctf-console'
