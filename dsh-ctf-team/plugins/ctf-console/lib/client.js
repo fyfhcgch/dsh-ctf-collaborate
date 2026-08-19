@@ -74,13 +74,26 @@ function apply(ctx) {
     }
   }
 
+  let panelDisposer = null
+
   function openPanel() {
+    if (!panelDisposer) {
+      panelDisposer = slots.inject('details', function () {
+        return slots.register({ name: 'details', priority: -1 }, function () {
+          return el(Panel)
+        })
+      })
+    }
     const layout = ctx.get('layout')
     if (layout) layout.openDetails()
   }
   function closePanel() {
     const layout = ctx.get('layout')
     if (layout) layout.closeDetails()
+    if (panelDisposer) {
+      panelDisposer()
+      panelDisposer = null
+    }
   }
 
   function FooterButton(props) {
@@ -523,11 +536,6 @@ function apply(ctx) {
               return el(HeaderButton, props)
             }
           )
-        }),
-        slots.inject('details', function () {
-          return slots.register({ name: 'details' }, function () {
-            return el(Panel)
-          })
         }),
       ]
       return function () {
